@@ -26,7 +26,10 @@ COPY frontend/ ./
 RUN npm run build
 
 # ----- Stage 2: build the Go binary with the embedded UI -----
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS go-builder
+# Track the major.minor declared in backend/go.mod. Bump both together
+# when upgrading Go; otherwise `go mod download` fails the toolchain
+# constraint check.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS go-builder
 WORKDIR /src/backend
 
 # Modules first so dep changes don't bust the source-cache layer.

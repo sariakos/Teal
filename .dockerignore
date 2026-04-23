@@ -1,0 +1,53 @@
+# Keep the docker build context lean — copy only what Dockerfile needs.
+
+.git
+.github
+.claude
+.editorconfig
+.gitignore
+.dockerignore
+
+# Repo docs + scripts not needed in the image
+ARCHITECTURE.md
+README.md
+LICENSE
+docs/
+install.sh
+uninstall.sh
+deploy/
+
+# Build artefacts from local dev
+backend/bin/
+backend/var/
+backend/data/
+backend/internal/api/frontend_build/_app/
+backend/internal/api/frontend_build/*.js
+backend/internal/api/frontend_build/*.css
+backend/internal/api/frontend_build/*.svg
+backend/internal/api/frontend_build/*.png
+backend/internal/api/frontend_build/*.ico
+backend/internal/api/frontend_build/robots.txt
+
+# Frontend caches and outputs (Dockerfile rebuilds them)
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+frontend/.env*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Test outputs
+*.test
+*.out
+coverage.txt
+
+# Local SQLite / state
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

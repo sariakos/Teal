@@ -30,6 +30,9 @@ services:
     container_name: teal-dev-traefik
     restart: unless-stopped
     # No --command flags: ALL config lives in the mounted traefik.yml.
+    # See platform compose for the DOCKER_API_VERSION rationale.
+    environment:
+      DOCKER_API_VERSION: "1.45"
     ports:
       - "80:80"        # HTTP entrypoint
       - "443:443"      # HTTPS entrypoint (only effective once ACME is configured)

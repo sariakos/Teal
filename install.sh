@@ -230,6 +230,12 @@ services:
     image: traefik:v3.5
     container_name: teal-traefik
     restart: unless-stopped
+    # Pin a modern Docker API version. Traefik's bundled client
+    # defaults to v1.24 which is older than the minimum the host
+    # daemon (Docker 20.10+) accepts — the docker provider would log
+    # "client version too old" forever and never route the platform UI.
+    environment:
+      DOCKER_API_VERSION: "1.45"
     ports:
       - "80:80"
       - "443:443"

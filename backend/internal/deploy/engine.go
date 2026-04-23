@@ -317,7 +317,16 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 
 	// Resolve the compose source: prefer git when configured, fall back to
 	// the stored ComposeFile.
+	//
+	// projectDir matters for relative paths in the user's compose
+	// (build contexts, bind-mount sources, secret/config files). For
+	// git-source apps it's the checkout dir so `build: ./app` resolves
+	// to <checkout>/app. For paste-compose apps there are no relative
+	// paths to resolve (the workdir is the only thing on disk), so we
+	// leave it empty and let docker compose default to the dir of the
+	// -f file.
 	composeYAML := app.ComposeFile
+	projectDir := ""
 	if app.GitURL != "" {
 		fmt.Fprintf(logFile, "[info] cloning %s @ %s\n", redactGitURL(app.GitURL), app.EffectiveGitBranch())
 		auth, err := e.resolveGitAuth(app)
@@ -355,6 +364,11 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 			return
 		}
 		composeYAML = string(composeBytes)
+		// Compose path inside the repo can live in a subdirectory
+		// (e.g. "deploy/docker-compose.yml"). Anchor project-dir to
+		// the directory containing the compose so `build: ../app`
+		// patterns work too.
+		projectDir = filepath.Dir(filepath.Join(checkoutDir, composeRel))
 	}
 
 	if composeYAML == "" {
@@ -364,12 +378,23 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 
 	// Domains may be empty (background-only app); compose handles that.
 	domains := splitDomains(app.Domains)
+
+	// EnvFilePath: when project-dir is the checkout (git case), a
+	// relative "deploy.env" would resolve to <checkout>/deploy.env
+	// which is inside the user's repo — wrong. Use the absolute path
+	// so docker compose finds the engine-written env file no matter
+	// where project-dir points.
+	envFilePath := "deploy.env"
+	if projectDir != "" {
+		envFilePath = envPath
+	}
+
 	tx, err := compose.Transform(compose.TransformInput{
 		UserYAML:    composeYAML,
 		AppSlug:     app.Slug,
 		Color:       dep.Color,
 		Domains:     domains,
-		EnvFilePath: "deploy.env", // relative to compose.yml in same dir
+		EnvFilePath: envFilePath,
 		CPULimit:    app.CPULimit,
 		MemoryLimit: app.MemoryLimit,
 	})
@@ -387,13 +412,18 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 	}
 
 	project := composeProjectName(app.Slug, dep.Color)
+	composeOpts := ComposeOptions{
+		Project:     project,
+		ComposePath: composePath,
+		ProjectDir:  projectDir,
+	}
 
 	// Pull or build. We branch on whether the transformed YAML carries any
 	// build directive — `docker compose build` is a no-op when nothing
 	// declares one but `pull` would error if every service is build-only.
 	if HasBuildDirective(tx.YAML) {
 		e.setPhase(dep.ID, PhaseBuilding)
-		if err := e.runner.Build(ctx, project, composePath, logFile); err != nil {
+		if err := e.runner.Build(ctx, composeOpts, logFile); err != nil {
 			e.fail(ctx, app, dep, "build: "+err.Error())
 			return
 		}
@@ -401,15 +431,15 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		// Pull is best-effort: a private registry without auth, or a custom
 		// image that lives only locally, will fail. Log the error but
 		// continue — `up` will surface a real missing-image problem.
-		if err := e.runner.Pull(ctx, project, composePath, logFile); err != nil {
+		if err := e.runner.Pull(ctx, composeOpts, logFile); err != nil {
 			fmt.Fprintf(logFile, "[warn] pull failed: %v (continuing)\n", err)
 		}
 	}
 
 	e.setPhase(dep.ID, PhaseStarting)
-	if err := e.runner.Up(ctx, project, composePath, logFile); err != nil {
+	if err := e.runner.Up(ctx, composeOpts, logFile); err != nil {
 		e.fail(ctx, app, dep, "up: "+err.Error())
-		_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+		_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 		return
 	}
 
@@ -420,12 +450,12 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		id, err := e.runner.PrimaryContainerID(ctx, app.Slug, string(dep.Color))
 		if err != nil {
 			e.fail(ctx, app, dep, "find primary container: "+err.Error())
-			_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
 		if id == "" {
 			e.fail(ctx, app, dep, "primary container not found after up")
-			_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
 		primaryContainerID = id
@@ -445,7 +475,7 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 			HTTPHostPort: hostPort,
 		}); err != nil {
 			e.fail(ctx, app, dep, "healthcheck: "+err.Error())
-			_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
 	}
@@ -456,13 +486,13 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		insp, err := e.docker.ContainerInspect(ctx, primaryContainerID)
 		if err != nil {
 			e.fail(ctx, app, dep, "inspect primary: "+err.Error())
-			_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
 		ip := insp.NetworkIPs[traefik.PlatformNetworkName]
 		if ip == "" {
 			e.fail(ctx, app, dep, fmt.Sprintf("primary container has no IP on %s; check that the service is attached to the platform network", traefik.PlatformNetworkName))
-			_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
 		port := tx.PortInContainer
@@ -483,7 +513,7 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		}
 		if err := traefik.Write(e.cfg.TraefikDynamicDir, spec); err != nil {
 			e.fail(ctx, app, dep, "traefik write: "+err.Error())
-			_ = e.runner.Down(context.Background(), project, composePath, io.Discard)
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
 	}
@@ -512,7 +542,8 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		// targeting the same services works. Operationally this is fine
 		// because the old stack's services are the same set (Compose is
 		// converging by name).
-		if err := e.runner.Down(context.Background(), oldProject, composePath, logFile); err != nil {
+		oldOpts := ComposeOptions{Project: oldProject, ComposePath: composePath, ProjectDir: projectDir}
+		if err := e.runner.Down(context.Background(), oldOpts, logFile); err != nil {
 			fmt.Fprintf(logFile, "[warn] tear down old stack failed: %v\n", err)
 		}
 	}
@@ -646,7 +677,10 @@ var ErrNoRollbackCandidate = errors.New("deploy: no rollback candidate")
 func (e *Engine) Teardown(ctx context.Context, app domain.App) error {
 	for _, c := range []domain.Color{domain.ColorBlue, domain.ColorGreen} {
 		project := composeProjectName(app.Slug, c)
-		_ = e.runner.Down(ctx, project, "/dev/null", io.Discard) // best-effort; missing project is fine
+		// Best-effort: missing project is fine. We pass /dev/null as the
+		// compose file because docker compose down -p <project> selects
+		// containers by label and doesn't actually need the file.
+		_ = e.runner.Down(ctx, ComposeOptions{Project: project, ComposePath: "/dev/null"}, io.Discard)
 	}
 	_ = traefik.Delete(e.cfg.TraefikDynamicDir, app.Slug)
 	_ = e.wd.RemoveApp(app.Slug)

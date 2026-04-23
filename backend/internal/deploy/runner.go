@@ -29,27 +29,50 @@ func NewComposeRunner() *ComposeRunner {
 	return &ComposeRunner{DockerBin: "docker"}
 }
 
-// Up runs `docker compose -p <project> -f <compose> up -d --remove-orphans`.
-func (r *ComposeRunner) Up(ctx context.Context, project, composePath string, logSink io.Writer) error {
-	return r.run(ctx, logSink, "compose", "-p", project, "-f", composePath, "up", "-d", "--remove-orphans")
+// ComposeOptions describes how to invoke `docker compose` for one
+// deployment. ProjectDir, when non-empty, sets `--project-directory`
+// so build contexts and bind-mount paths in the user's compose
+// resolve relative to it. For git-source apps this should be the
+// checkout dir (where `build: ./app` is meant to find <checkout>/app).
+type ComposeOptions struct {
+	Project     string
+	ComposePath string
+	ProjectDir  string // empty → docker compose defaults to dir of -f file
 }
 
-// Down runs `docker compose -p <project> -f <compose> down --timeout 30 --remove-orphans`.
+func (o ComposeOptions) baseArgs() []string {
+	args := []string{"compose", "-p", o.Project, "-f", o.ComposePath}
+	if o.ProjectDir != "" {
+		args = append(args, "--project-directory", o.ProjectDir)
+	}
+	return args
+}
+
+// Up runs `docker compose ... up -d --remove-orphans`.
+func (r *ComposeRunner) Up(ctx context.Context, opts ComposeOptions, logSink io.Writer) error {
+	args := append(opts.baseArgs(), "up", "-d", "--remove-orphans")
+	return r.run(ctx, logSink, args...)
+}
+
+// Down runs `docker compose ... down --timeout 30 --remove-orphans`.
 // timeout is the per-container shutdown grace before SIGKILL.
-func (r *ComposeRunner) Down(ctx context.Context, project, composePath string, logSink io.Writer) error {
-	return r.run(ctx, logSink, "compose", "-p", project, "-f", composePath, "down", "--timeout", "30", "--remove-orphans")
+func (r *ComposeRunner) Down(ctx context.Context, opts ComposeOptions, logSink io.Writer) error {
+	args := append(opts.baseArgs(), "down", "--timeout", "30", "--remove-orphans")
+	return r.run(ctx, logSink, args...)
 }
 
-// Pull runs `docker compose -p <project> -f <compose> pull` to refresh
-// images for non-build services.
-func (r *ComposeRunner) Pull(ctx context.Context, project, composePath string, logSink io.Writer) error {
-	return r.run(ctx, logSink, "compose", "-p", project, "-f", composePath, "pull")
+// Pull runs `docker compose ... pull` to refresh images for non-build
+// services.
+func (r *ComposeRunner) Pull(ctx context.Context, opts ComposeOptions, logSink io.Writer) error {
+	args := append(opts.baseArgs(), "pull")
+	return r.run(ctx, logSink, args...)
 }
 
-// Build runs `docker compose -p <project> -f <compose> build` for services
-// with a build: directive.
-func (r *ComposeRunner) Build(ctx context.Context, project, composePath string, logSink io.Writer) error {
-	return r.run(ctx, logSink, "compose", "-p", project, "-f", composePath, "build")
+// Build runs `docker compose ... build` for services with a build:
+// directive.
+func (r *ComposeRunner) Build(ctx context.Context, opts ComposeOptions, logSink io.Writer) error {
+	args := append(opts.baseArgs(), "build")
+	return r.run(ctx, logSink, args...)
 }
 
 // PrimaryContainerID returns the container ID of the service Teal labelled

@@ -149,6 +149,18 @@ docker info >/dev/null 2>&1 || die "docker is installed but not running. Start i
 docker compose version >/dev/null 2>&1 || die "docker compose plugin is required (Docker Compose v2)."
 
 # --------- Prompts (only ask what really needs a human) ----------
+# When re-running the installer on an existing host, prefer the values
+# already in /etc/teal/.env over the script defaults — the operator
+# almost certainly wants the same domain + admin they picked the first
+# time, not the literal "teal.localhost" placeholder.
+ENV_FILE="$ETC_DIR/.env"
+if [ -f "$ENV_FILE" ]; then
+  prior_domain=$(grep -E '^TEAL_BASE_DOMAIN=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+  prior_email=$(grep -E '^TEAL_ADMIN_EMAIL=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+  [ -n "$prior_domain" ] && BASE_DOMAIN="$prior_domain"
+  [ -n "$prior_email" ] && ADMIN_EMAIL="$prior_email"
+fi
+
 BASE_DOMAIN=$(ask "Base domain for the Teal UI" "$BASE_DOMAIN")
 if [ -z "$ADMIN_EMAIL" ]; then
   ADMIN_EMAIL=$(ask "Admin email (used at first sign-in)" "admin@$BASE_DOMAIN")
@@ -159,7 +171,6 @@ mkdir -p "$ETC_DIR" "$DATA_DIR" "$DATA_DIR/traefik/dynamic" "$DATA_DIR/traefik/a
 chmod 0750 "$ETC_DIR" "$DATA_DIR"
 
 # --------- Secret ----------
-ENV_FILE="$ETC_DIR/.env"
 if [ -f "$ENV_FILE" ]; then
   log "Existing $ENV_FILE found — keeping the existing PLATFORM_SECRET."
 else
@@ -203,8 +214,16 @@ services:
       - platform_proxy
     labels:
       - "traefik.enable=true"
+      # HTTP router — always on; serves the UI before ACME is configured
+      # and acts as the LE HTTP-01 challenge target afterwards.
       - "traefik.http.routers.teal.rule=Host(\`${BASE_DOMAIN}\`)"
       - "traefik.http.routers.teal.entrypoints=web"
+      # HTTPS router — Traefik will ignore it until the letsencrypt
+      # resolver exists in the static config. Once an admin saves the
+      # ACME email and Traefik is restarted, this starts serving.
+      - "traefik.http.routers.teal-secure.rule=Host(\`${BASE_DOMAIN}\`)"
+      - "traefik.http.routers.teal-secure.entrypoints=websecure"
+      - "traefik.http.routers.teal-secure.tls.certresolver=letsencrypt"
       - "traefik.http.services.teal.loadbalancer.server.port=3000"
 
   traefik:

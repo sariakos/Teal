@@ -59,6 +59,28 @@ log()  { printf '\033[1;36m[teal]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[teal]\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31m[teal]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# When the user runs `curl … | bash`, the script's stdin IS the pipe
+# carrying the script body — a plain `read` would consume the next line
+# of the script itself instead of waiting for keyboard input. Routing
+# reads through /dev/tty bypasses the pipe and talks to the terminal
+# directly. If there's no tty (cron, cloud-init), we require --yes
+# rather than silently defaulting.
+HAVE_TTY=0
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  HAVE_TTY=1
+fi
+if [ "$ASSUME_YES" = "0" ] && [ "$HAVE_TTY" = "0" ]; then
+  cat >&2 <<'EOF'
+[teal] No interactive terminal detected (running headless?).
+       Re-run with --yes to accept all defaults:
+
+         curl -fsSL https://raw.githubusercontent.com/sariakos/teal/main/install.sh | bash -s -- --yes
+
+       Or pass --base-domain=… and --admin-email=… explicitly.
+EOF
+  exit 1
+fi
+
 ask() {
   # ask "prompt" default → echoes user's reply (or default in --yes mode)
   local prompt="$1" default="$2" reply=""
@@ -66,8 +88,8 @@ ask() {
     echo "$default"
     return 0
   fi
-  printf '\033[1;36m[teal]\033[0m %s [%s]: ' "$prompt" "$default" >&2
-  read -r reply || reply=""
+  printf '\033[1;36m[teal]\033[0m %s [%s]: ' "$prompt" "$default" >/dev/tty
+  read -r reply </dev/tty || reply=""
   if [ -z "$reply" ]; then
     echo "$default"
   else
@@ -79,8 +101,8 @@ confirm() {
   # confirm "prompt" → 0 (yes) / 1 (no). --yes makes it always yes.
   local prompt="$1" reply=""
   if [ "$ASSUME_YES" = "1" ]; then return 0; fi
-  printf '\033[1;36m[teal]\033[0m %s [Y/n] ' "$prompt" >&2
-  read -r reply || reply=""
+  printf '\033[1;36m[teal]\033[0m %s [Y/n] ' "$prompt" >/dev/tty
+  read -r reply </dev/tty || reply=""
   case "${reply:-y}" in
     y|Y|yes|YES) return 0 ;;
     *) return 1 ;;

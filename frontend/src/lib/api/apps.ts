@@ -15,6 +15,15 @@ export interface CreateAppInput {
 	domains: string[];
 	autoDeployBranch?: string;
 	autoDeployEnabled?: boolean;
+
+	// Git source (optional). When `gitUrl` is set, the create response
+	// is an AppInitSecrets that may carry one-shot reveals
+	// (newPublicKey for SSH, newWebhookSecret for the inbound webhook).
+	gitUrl?: string;
+	gitAuthKind?: GitAuthKind;
+	gitCredential?: string;
+	gitBranch?: string;
+	gitComposePath?: string;
 }
 
 export interface UpdateAppInput {
@@ -37,7 +46,7 @@ export interface UpdateAppInput {
 export const appsApi = {
 	list: () => api.get<App[]>('/apps'),
 	get: (slug: string) => api.get<AppDetail>(`/apps/${slug}`),
-	create: (data: CreateAppInput) => api.post<AppDetail>('/apps', data),
+	create: (data: CreateAppInput) => api.post<AppInitSecrets>('/apps', data),
 	// update returns the one-shot secrets shape — callers should check
 	// newWebhookSecret / newPublicKey and surface them immediately.
 	update: (slug: string, data: UpdateAppInput) => api.patch<AppInitSecrets>(`/apps/${slug}`, data),

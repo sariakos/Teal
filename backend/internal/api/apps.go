@@ -145,6 +145,16 @@ type createAppRequest struct {
 	Domains           []string `json:"domains"`
 	AutoDeployBranch  string   `json:"autoDeployBranch"`
 	AutoDeployEnabled bool     `json:"autoDeployEnabled"`
+
+	// Git source fields — mirror the PATCH endpoint so an app can be
+	// created git-ready in one round-trip. When GitURL is set, the
+	// response includes one-shot secrets (newPublicKey /
+	// newWebhookSecret) the UI must surface immediately.
+	GitURL         string `json:"gitUrl"`
+	GitAuthKind    string `json:"gitAuthKind"`     // "" | "ssh" | "pat"
+	GitCredential  string `json:"gitCredential"`   // PEM (SSH) or raw PAT
+	GitBranch      string `json:"gitBranch"`
+	GitComposePath string `json:"gitComposePath"`
 }
 
 func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -163,10 +173,29 @@ func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "slug must match [a-z][a-z0-9-]*[a-z0-9] (3..40 chars)")
 		return
 	}
+	gitKind := domain.GitAuthKind(strings.TrimSpace(req.GitAuthKind))
+	if err := validateGitAuthKind(gitKind); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	gitURL := strings.TrimSpace(req.GitURL)
+	if gitURL != "" && gitKind == domain.GitAuthPAT && req.GitCredential == "" {
+		writeError(w, http.StatusBadRequest, "PAT auth requires gitCredential on first set")
+		return
+	}
+	gitComposePath := strings.TrimSpace(req.GitComposePath)
+	if gitComposePath == "" {
+		gitComposePath = "docker-compose.yml"
+	}
+
 	app, err := h.store.Apps.Create(r.Context(), domain.App{
 		Slug: req.Slug, Name: req.Name, ComposeFile: req.ComposeFile,
 		Domains: joinDomains(req.Domains), AutoDeployBranch: req.AutoDeployBranch,
 		AutoDeployEnabled: req.AutoDeployEnabled,
+		GitURL:         gitURL,
+		GitAuthKind:    gitKind,
+		GitBranch:      strings.TrimSpace(req.GitBranch),
+		GitComposePath: gitComposePath,
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -176,10 +205,67 @@ func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to create app")
 		return
 	}
+
+	// Git side-effects (deploy keypair, webhook secret) need the app's
+	// ID, so they happen post-Create. The response surfaces one-shot
+	// reveals so the UI can show them before navigating away.
+	init := appInitSecretsResponse{}
+	if gitURL != "" {
+		switch gitKind {
+		case domain.GitAuthSSH:
+			if req.GitCredential != "" {
+				enc, err := h.encryptCredential(app.ID, []byte(req.GitCredential))
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "encrypt credential")
+					return
+				}
+				app.GitAuthCredentialEncrypted = enc
+			} else {
+				privPEM, publicSSH, err := git.GenerateSSHKeyPair(app.Slug)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "generate deploy key")
+					return
+				}
+				enc, err := h.encryptCredential(app.ID, privPEM)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "encrypt key")
+					return
+				}
+				app.GitAuthCredentialEncrypted = enc
+				init.NewPublicKey = publicSSH
+				if fp, err := git.SSHKeyFingerprint(publicSSH); err == nil {
+					init.NewKeyFingerprint = fp
+				}
+			}
+		case domain.GitAuthPAT:
+			enc, err := h.encryptCredential(app.ID, []byte(req.GitCredential))
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "encrypt credential")
+				return
+			}
+			app.GitAuthCredentialEncrypted = enc
+		}
+
+		raw, encSec, err := h.newWebhookSecret(app.ID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "generate webhook secret")
+			return
+		}
+		app.WebhookSecretEncrypted = encSec
+		init.NewWebhookSecret = raw
+
+		if err := h.store.Apps.Update(r.Context(), app); err != nil {
+			writeError(w, http.StatusInternalServerError, "persist git config: "+err.Error())
+			return
+		}
+	}
+
 	recordAudit(r.Context(), h.logger, h.store.AuditLogs,
 		domain.AuditActionAppCreate, "app", strconv.FormatInt(app.ID, 10),
 		clientIP(r), "created app "+app.Slug, "")
-	writeJSON(w, http.StatusCreated, appToDetail(app))
+
+	init.appDetailResponse = appToDetail(app)
+	writeJSON(w, http.StatusCreated, init)
 }
 
 type updateAppRequest struct {

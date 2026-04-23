@@ -72,6 +72,10 @@ services:
       - /var/lib/teal/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - /var/lib/teal/traefik/dynamic:/etc/traefik/dynamic:ro
       - /var/lib/teal/traefik/acme:/etc/traefik/acme
+      # Read-only docker socket so the Traefik docker provider can pick
+      # up labels from the Teal container (which routes the platform
+      # UI itself). User app containers route via the file provider.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - platform_proxy
     depends_on:

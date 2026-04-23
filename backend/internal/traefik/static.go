@@ -64,12 +64,26 @@ type staticEntryPoint struct {
 }
 
 type staticProviders struct {
-	File staticFileProvider `yaml:"file"`
+	File   staticFileProvider   `yaml:"file"`
+	Docker staticDockerProvider `yaml:"docker"`
 }
 
 type staticFileProvider struct {
 	Directory string `yaml:"directory"`
 	Watch     bool   `yaml:"watch"`
+}
+
+// staticDockerProvider enables Traefik to pick up routers + services
+// declared via container labels. Used by the platform compose to route
+// the Teal UI itself (the per-app system routes user containers via
+// the file provider). ExposedByDefault: false means containers must
+// opt in with `traefik.enable=true`, which keeps random user
+// containers from being silently exposed.
+type staticDockerProvider struct {
+	Endpoint         string `yaml:"endpoint"`
+	Network          string `yaml:"network,omitempty"`
+	ExposedByDefault bool   `yaml:"exposedByDefault"`
+	WatchContainers  bool   `yaml:"watch,omitempty"`
 }
 
 type staticResolver struct {
@@ -108,6 +122,12 @@ func BuildStatic(opts StaticOptions) ([]byte, error) {
 			File: staticFileProvider{
 				Directory: "/etc/traefik/dynamic",
 				Watch:     true,
+			},
+			Docker: staticDockerProvider{
+				Endpoint:         "unix:///var/run/docker.sock",
+				Network:          PlatformNetworkName,
+				ExposedByDefault: false,
+				WatchContainers:  true,
 			},
 		},
 		Log: staticLog{Level: "INFO"},

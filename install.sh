@@ -237,6 +237,10 @@ services:
       - ${DATA_DIR}/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ${DATA_DIR}/traefik/dynamic:/etc/traefik/dynamic:ro
       - ${DATA_DIR}/traefik/acme:/etc/traefik/acme
+      # Read-only docker socket so Traefik's docker provider picks up
+      # labels from the Teal container (platform-UI routing). User app
+      # containers route via the file provider, not labels.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - platform_proxy
     depends_on:

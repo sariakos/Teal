@@ -25,6 +25,24 @@ func TestBuildStaticHTTPOnlyByDefault(t *testing.T) {
 	}
 }
 
+func TestBuildStaticEnablesDockerProvider(t *testing.T) {
+	body, err := BuildStatic(StaticOptions{})
+	if err != nil {
+		t.Fatalf("BuildStatic: %v", err)
+	}
+	s := string(body)
+	for _, want := range []string{
+		"docker:",
+		"endpoint: unix:///var/run/docker.sock",
+		"network: platform_proxy",
+		"exposedByDefault: false",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %q in static config; body:\n%s", want, s)
+		}
+	}
+}
+
 func TestBuildStaticEnablesACMEWhenEmailSet(t *testing.T) {
 	body, err := BuildStatic(StaticOptions{
 		ACMEEmail:   "ops@example.com",

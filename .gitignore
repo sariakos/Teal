@@ -1,0 +1,50 @@
+# Build artefacts
+/backend/bin/
+/backend/teal
+*.test
+*.out
+coverage.txt
+
+# Embed staging — populated by `make build-release` from frontend/build/.
+# Only .gitkeep + a tiny placeholder index.html are tracked so the
+# embed_frontend build tag always has something to embed on a fresh
+# checkout. Everything the SvelteKit build emits is ignored.
+/backend/internal/api/frontend_build/_app/
+/backend/internal/api/frontend_build/*.js
+/backend/internal/api/frontend_build/*.css
+/backend/internal/api/frontend_build/*.svg
+/backend/internal/api/frontend_build/*.png
+/backend/internal/api/frontend_build/*.ico
+/backend/internal/api/frontend_build/robots.txt
+
+# Local data (SQLite DB, encryption keys, dev compose state).
+# Both repo-root /var (legacy) and backend/var (current default for
+# TEAL_WORKDIR_ROOT during dev) — the engine writes deployment workdirs,
+# Traefik state, container log buffers and the SQLite DB into one of these.
+/var/
+/data/
+/backend/var/
+/backend/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Frontend
+/frontend/node_modules/
+/frontend/.svelte-kit/
+/frontend/build/
+/frontend/.env*
+!/frontend/.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local secrets and overrides
+.env
+.env.local
+*.local

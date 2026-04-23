@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  Placeholder so the `embed_frontend` build tag always has something to
+  embed even on a fresh checkout. Replaced by `make build-release` with
+  the actual SvelteKit production build.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Teal — frontend not built</title>
+  </head>
+  <body>
+    <main style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5;">
+      <h1>Teal API is up.</h1>
+      <p>
+        This is a placeholder page — the SvelteKit UI hasn't been built into this binary.
+        Build a release with the embedded UI:
+      </p>
+      <pre style="background: #f4f4f5; padding: 1rem; border-radius: 6px;">make -C backend build-release</pre>
+      <p>
+        Or use the API directly: <code>GET /api/v1/healthz</code> returns the platform status.
+      </p>
+    </main>
+  </body>
+</html>

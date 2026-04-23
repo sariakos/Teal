@@ -1,0 +1,47 @@
+# Local-development reverse proxy for Teal.
+#
+# Brings up a single Traefik instance whose configuration is fully owned by
+# the engine:
+#   - Static config (entrypoints, ACME resolver, dashboard) is written to
+#     ../backend/var/traefik/traefik.yml on every Teal startup AND on every
+#     ACME-related platform-settings change. Static config is read at boot,
+#     so toggling ACME on/off requires `docker compose restart traefik`.
+#   - Per-app dynamic config lives in ../backend/var/traefik/dynamic/.
+#     Traefik's file provider watches that directory and reloads
+#     automatically.
+#
+# ACME state (acme.json) is mounted from a host directory so certificates
+# survive container restarts. Permissions on acme.json must be 600 — Traefik
+# refuses to start otherwise; the engine writes the file and chmods it.
+#
+# Usage from the repo root:
+#   make -C backend dev-up
+#   make -C backend dev-down
+#
+# After `dev-up`, run `teal` from the backend dir; it writes the static
+# config + ensures the platform_proxy network. Boot order is then:
+#   1. teal (writes static config) → 2. traefik (reads it on boot).
+# A first-run flake is possible if Traefik wins the race; just restart
+# Traefik (`docker compose restart traefik`).
+
+services:
+  traefik:
+    image: traefik:v3.5
+    container_name: teal-dev-traefik
+    restart: unless-stopped
+    # No --command flags: ALL config lives in the mounted traefik.yml.
+    ports:
+      - "80:80"        # HTTP entrypoint
+      - "443:443"      # HTTPS entrypoint (only effective once ACME is configured)
+      - "8080:8080"    # dashboard (only exposed in DEV; remove for prod)
+    networks:
+      - platform_proxy
+    volumes:
+      - ../backend/var/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ../backend/var/traefik/dynamic:/etc/traefik/dynamic:ro
+      - ../backend/var/traefik/acme:/etc/traefik/acme
+
+networks:
+  platform_proxy:
+    name: platform_proxy
+    external: true

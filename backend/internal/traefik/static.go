@@ -64,8 +64,7 @@ type staticEntryPoint struct {
 }
 
 type staticProviders struct {
-	File   staticFileProvider   `yaml:"file"`
-	Docker staticDockerProvider `yaml:"docker"`
+	File staticFileProvider `yaml:"file"`
 }
 
 type staticFileProvider struct {
@@ -73,18 +72,13 @@ type staticFileProvider struct {
 	Watch     bool   `yaml:"watch"`
 }
 
-// staticDockerProvider enables Traefik to pick up routers + services
-// declared via container labels. Used by the platform compose to route
-// the Teal UI itself (the per-app system routes user containers via
-// the file provider). ExposedByDefault: false means containers must
-// opt in with `traefik.enable=true`, which keeps random user
-// containers from being silently exposed.
-type staticDockerProvider struct {
-	Endpoint         string `yaml:"endpoint"`
-	Network          string `yaml:"network,omitempty"`
-	ExposedByDefault bool   `yaml:"exposedByDefault"`
-	WatchContainers  bool   `yaml:"watch,omitempty"`
-}
+// We deliberately do NOT enable the docker provider here. Traefik v3.x
+// ships a bundled docker client pinned to API v1.24, and modern Docker
+// daemons (20.10+) reject that version. Setting DOCKER_API_VERSION on
+// the Traefik container does not help — the bundled client doesn't
+// read it. Both per-app routes and the platform-UI route go through
+// the file provider, which is also our portable choice (no docker
+// socket dependency for the proxy).
 
 type staticResolver struct {
 	ACME staticACME `yaml:"acme"`
@@ -122,12 +116,6 @@ func BuildStatic(opts StaticOptions) ([]byte, error) {
 			File: staticFileProvider{
 				Directory: "/etc/traefik/dynamic",
 				Watch:     true,
-			},
-			Docker: staticDockerProvider{
-				Endpoint:         "unix:///var/run/docker.sock",
-				Network:          PlatformNetworkName,
-				ExposedByDefault: false,
-				WatchContainers:  true,
 			},
 		},
 		Log: staticLog{Level: "INFO"},

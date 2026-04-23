@@ -46,31 +46,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - platform_proxy
-    labels:
-      # Route the Teal UI itself through Traefik.
-      - "traefik.enable=true"
-      # HTTP — always on; also serves the LE HTTP-01 challenge once
-      # ACME is configured.
-      - "traefik.http.routers.teal.rule=Host(`${TEAL_BASE_DOMAIN:-teal.localhost}`)"
-      - "traefik.http.routers.teal.entrypoints=web"
-      # HTTPS — Traefik ignores this router until the letsencrypt
-      # resolver exists in the static config (admin saves ACME email +
-      # restarts traefik). After that, this serves with an LE cert.
-      - "traefik.http.routers.teal-secure.rule=Host(`${TEAL_BASE_DOMAIN:-teal.localhost}`)"
-      - "traefik.http.routers.teal-secure.entrypoints=websecure"
-      - "traefik.http.routers.teal-secure.tls.certresolver=letsencrypt"
-      - "traefik.http.services.teal.loadbalancer.server.port=3000"
+    # Traefik routing for the platform UI is declared via a file in the
+    # dynamic dir (written by install.sh), not via container labels.
+    # See: <data-dir>/traefik/dynamic/_platform.yml. Traefik's docker
+    # provider is intentionally NOT enabled — its bundled client speaks
+    # API v1.24 and modern daemons refuse the call.
 
   traefik:
     image: traefik:v3.5
     container_name: teal-traefik
     restart: unless-stopped
-    # Pin a modern Docker API version. Traefik's bundled client
-    # defaults to v1.24 which is older than the minimum the host
-    # daemon (Docker 20.10+) accepts — without this the docker
-    # provider can't fetch container metadata.
-    environment:
-      DOCKER_API_VERSION: "1.45"
     ports:
       - "80:80"
       - "443:443"
@@ -78,10 +63,6 @@ services:
       - /var/lib/teal/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - /var/lib/teal/traefik/dynamic:/etc/traefik/dynamic:ro
       - /var/lib/teal/traefik/acme:/etc/traefik/acme
-      # Read-only docker socket so the Traefik docker provider can pick
-      # up labels from the Teal container (which routes the platform
-      # UI itself). User app containers route via the file provider.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - platform_proxy
     depends_on:

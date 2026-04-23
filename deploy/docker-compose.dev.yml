@@ -30,9 +30,6 @@ services:
     container_name: teal-dev-traefik
     restart: unless-stopped
     # No --command flags: ALL config lives in the mounted traefik.yml.
-    # See platform compose for the DOCKER_API_VERSION rationale.
-    environment:
-      DOCKER_API_VERSION: "1.45"
     ports:
       - "80:80"        # HTTP entrypoint
       - "443:443"      # HTTPS entrypoint (only effective once ACME is configured)
@@ -43,11 +40,6 @@ services:
       - ../backend/var/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ../backend/var/traefik/dynamic:/etc/traefik/dynamic:ro
       - ../backend/var/traefik/acme:/etc/traefik/acme
-      # Read-only docker socket for the Traefik docker provider. In dev,
-      # the Teal binary runs on the host (not in a container) so there
-      # are no platform-side labels to read — the socket mount exists
-      # so the static-config docker block doesn't error at boot.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 networks:
   platform_proxy:

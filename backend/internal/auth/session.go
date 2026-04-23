@@ -32,22 +32,45 @@ const (
 // SessionManager owns session lifecycle and cookie plumbing. One instance
 // shared across all requests; safe for concurrent use.
 type SessionManager struct {
-	Sessions      *store.SessionRepo
-	TTL           time.Duration
-	SlideMinimum  time.Duration
-	Secure        bool   // true in prod (TEAL_ENV=prod) so cookies are only sent over HTTPS
-	CookieDomain  string // empty => defaults to request host
+	Sessions     *store.SessionRepo
+	TTL          time.Duration
+	SlideMinimum time.Duration
+	// SecureRequired, when true, forces the Secure flag regardless of the
+	// request scheme. Reserved for future hardening; v1 leaves it false
+	// and lets per-request scheme detection decide.
+	SecureRequired bool
+	CookieDomain   string // empty => defaults to request host
 }
 
-// NewSessionManager constructs a manager with sensible defaults. Pass
-// secure=true in production.
+// NewSessionManager constructs a manager with sensible defaults. The
+// `secure` arg is preserved for backwards-compatibility but no longer
+// pins the Secure flag globally — Secure is now derived per request
+// from r.TLS / X-Forwarded-Proto so an HTTP-only first-time install
+// can still log in to enable HTTPS. Pass secure=true to force-Secure
+// (rare; only useful when Teal sits behind a proxy that doesn't set
+// X-Forwarded-Proto correctly and the operator wants to disallow HTTP
+// cookies entirely).
 func NewSessionManager(sessions *store.SessionRepo, secure bool) *SessionManager {
 	return &SessionManager{
-		Sessions:     sessions,
-		TTL:          DefaultSessionTTL,
-		SlideMinimum: DefaultSessionSlideMinimum,
-		Secure:       secure,
+		Sessions:       sessions,
+		TTL:            DefaultSessionTTL,
+		SlideMinimum:   DefaultSessionSlideMinimum,
+		SecureRequired: secure,
 	}
+}
+
+// isSecureRequest reports whether the inbound request reached us over
+// HTTPS — directly (r.TLS != nil) or via a trusting reverse proxy
+// (X-Forwarded-Proto: https). Teal is intended to sit behind Traefik;
+// we trust the X-F-P header it sets.
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return strings.EqualFold(proto, "https")
+	}
+	return false
 }
 
 // Issue creates a new server-side session for userID, sets the session and
@@ -75,7 +98,7 @@ func (m *SessionManager) Issue(ctx context.Context, w http.ResponseWriter, r *ht
 		return domain.Session{}, err
 	}
 
-	m.setCookies(w, sess)
+	m.setCookies(w, r, sess)
 	return sess, nil
 }
 
@@ -125,7 +148,8 @@ func (m *SessionManager) Destroy(ctx context.Context, w http.ResponseWriter, r *
 	return nil
 }
 
-func (m *SessionManager) setCookies(w http.ResponseWriter, sess domain.Session) {
+func (m *SessionManager) setCookies(w http.ResponseWriter, r *http.Request, sess domain.Session) {
+	secure := m.SecureRequired || isSecureRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    sess.ID,
@@ -133,7 +157,7 @@ func (m *SessionManager) setCookies(w http.ResponseWriter, sess domain.Session) 
 		Domain:   m.CookieDomain,
 		Expires:  sess.ExpiresAt,
 		HttpOnly: true,
-		Secure:   m.Secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.SetCookie(w, &http.Cookie{
@@ -143,7 +167,7 @@ func (m *SessionManager) setCookies(w http.ResponseWriter, sess domain.Session) 
 		Domain:   m.CookieDomain,
 		Expires:  sess.ExpiresAt,
 		HttpOnly: false, // SPA must be able to read this
-		Secure:   m.Secure,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 	})
 }

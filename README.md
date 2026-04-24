@@ -59,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/sariakos/teal/main/uninstall.sh | s
 ## What you get
 
 - **Blue-green deployments** with atomic Traefik flip and a configurable drain window
-- **Git-source apps** — point at a GitHub repo with SSH deploy key or PAT; auto-deploy on webhook push to a configured branch
+- **Git-source apps** — point at a GitHub repo and deploy. Three auth options: **GitHub App** (recommended; install from the UI on the chosen repos, short-lived tokens, single shared webhook), SSH deploy key (Teal generates the keypair), or PAT
 - **Encrypted env vars**, per-app + opt-in shared secrets
 - **Per-app domains** + automatic Let's Encrypt certificates
 - **Real-time deploy progress + container logs** over WebSocket

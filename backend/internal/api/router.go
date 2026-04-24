@@ -106,6 +106,9 @@ func newRouter(d Deps) http.Handler {
 	ghAppWH := &gitHubAppWebhookHandler{
 		logger: d.Logger, store: d.Store, codec: d.Codec, engine: d.Engine,
 	}
+	ghAppAdminH := &gitHubAppAdminHandler{
+		logger: d.Logger, store: d.Store, codec: d.Codec,
+	}
 	logsH := &logsHandler{logger: d.Logger, store: d.Store, logbuf: d.LogBuffer, watcher: d.ContainerWatch, workdirRoot: d.WorkdirRoot}
 	metricsH := &metricsHandler{logger: d.Logger, store: d.Store}
 	notifH := &notificationsHandler{logger: d.Logger, store: d.Store}
@@ -209,6 +212,9 @@ func newRouter(d Deps) http.Handler {
 				r.Get("/settings", settingsH.list)
 				r.Put("/settings/{key}", settingsH.upsert)
 				r.Delete("/settings/{key}", settingsH.delete)
+
+				r.Get("/settings/github-app", ghAppAdminH.get)
+				r.Put("/settings/github-app", ghAppAdminH.put)
 
 				r.Delete("/docker/volumes/{name}", dockerH.deleteVolume)
 

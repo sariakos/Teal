@@ -13,7 +13,8 @@
 		{ href: '/settings/users', label: 'Users' },
 		{ href: '/settings/apikeys', label: 'API Keys' },
 		{ href: '/settings/shared-env', label: 'Shared env' },
-		{ href: '/settings/platform', label: 'Platform' }
+		{ href: '/settings/platform', label: 'Platform' },
+		{ href: '/settings/github-app', label: 'GitHub App' }
 	];
 
 	function isActive(href: string): boolean {

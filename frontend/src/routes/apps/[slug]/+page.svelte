@@ -153,6 +153,7 @@
 	let formMemoryLimit = $state('');
 	let formNotifyWebhookUrl = $state('');
 	let formNotifyEmail = $state('');
+	let manualInstallationID = $state<string>('');
 	let settingsError = $state<string | null>(null);
 	let saving = $state(false);
 
@@ -608,6 +609,45 @@
 									>
 										Install on a repo
 									</Button>
+								</div>
+								<div class="mt-3 border-t border-zinc-200 pt-3">
+									<label for="manualInstall" class="mb-1 block text-xs font-medium text-zinc-600">
+										Manual fallback — paste the installation ID
+									</label>
+									<div class="flex gap-2">
+										<Input
+											id="manualInstall"
+											bind:value={manualInstallationID}
+											placeholder="e.g. 12345678"
+										/>
+										<Button
+											variant="secondary"
+											disabled={!manualInstallationID}
+											onclick={async () => {
+												const idNum = Number(manualInstallationID);
+												if (!Number.isInteger(idNum) || idNum <= 0) {
+													alert('Installation ID must be a positive integer');
+													return;
+												}
+												try {
+													await appsApi.update(slug, { githubAppInstallationId: idNum });
+													await loadApp();
+												} catch (err) {
+													alert(err instanceof ApiError ? err.message : 'Save failed');
+												}
+											}}
+										>
+											Link
+										</Button>
+									</div>
+									<p class="mt-1 text-xs text-zinc-500">
+										Use this when the install-then-redirect flow doesn't work (e.g. the App's
+										<strong>Setup URL</strong> wasn't configured). Find the ID at
+										<a class="text-teal-700 underline" target="_blank" rel="noopener" href="https://github.com/settings/installations">
+											github.com/settings/installations
+										</a>
+										— click your installed app, the URL ends with the ID.
+									</p>
 								</div>
 							{/if}
 						</div>

@@ -41,6 +41,8 @@ export interface UpdateAppInput {
 	memoryLimit?: string;
 	notificationWebhookUrl?: string;
 	notificationEmail?: string;
+	githubAppInstallationId?: number;
+	githubAppRepo?: string;
 }
 
 export const appsApi = {

@@ -90,8 +90,18 @@
 				<strong>Homepage URL</strong>: anything (your Teal URL works).
 			</li>
 			<li>
-				<strong>Callback URL</strong>:
+				<strong>Setup URL</strong>
+				<em>(under "Post installation")</em>:
 				<code class="ml-1 break-all rounded bg-zinc-100 px-1 py-0.5 text-xs">{callbackURL}</code>
+			</li>
+			<li>
+				Tick <strong>Redirect on update</strong> right under the Setup URL field — without this,
+				GitHub won't bounce the browser back to Teal after install and the installation ID never
+				gets captured.
+			</li>
+			<li>
+				<strong>Callback URL</strong> (under "Identifying and authorizing users"): leave empty;
+				Teal doesn't use OAuth user-flow.
 			</li>
 			<li>Tick <strong>Request user authorization (OAuth) during installation</strong>: <em>off</em>.</li>
 			<li>

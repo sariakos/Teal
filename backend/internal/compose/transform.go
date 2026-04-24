@@ -381,9 +381,21 @@ func setTealLabels(svc map[string]any, slug string, color domain.Color) {
 	svc["labels"] = labels
 }
 
-// declareExternalPlatformNetwork ensures the top-level networks map carries
-// platform_proxy as an external network, so docker compose will attach
-// services to it instead of trying to create it.
+// declareExternalPlatformNetwork ensures the top-level networks map
+// carries platform_proxy as an external network (so docker compose
+// attaches services to it instead of trying to create it) AND declares
+// the project's `default` network explicitly.
+//
+// Why the explicit `default`: once we set networks: [default,
+// platform_proxy] on the primary, some compose versions stop
+// auto-creating the project default unless it's named in the top-level
+// networks map. Siblings like `postgres` (declared without their own
+// networks: block) then fail DNS lookups with EAI_AGAIN. Declaring
+// `default: {}` pins the behaviour across compose versions and is a
+// no-op when compose would have created it anyway.
+//
+// User-supplied top-level networks are preserved — only the two keys
+// we manage are written.
 func declareExternalPlatformNetwork(root map[string]any) {
 	nets, _ := root["networks"].(map[string]any)
 	if nets == nil {
@@ -392,6 +404,9 @@ func declareExternalPlatformNetwork(root map[string]any) {
 	nets[PlatformNetworkAlias] = map[string]any{
 		"external": true,
 		"name":     PlatformNetworkAlias,
+	}
+	if _, ok := nets["default"]; !ok {
+		nets["default"] = map[string]any{}
 	}
 	root["networks"] = nets
 }

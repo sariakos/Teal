@@ -435,6 +435,38 @@ func TestTransformPreservesDefaultNetworkAccessForPrimary(t *testing.T) {
 	}
 }
 
+func TestTransformDeclaresTopLevelDefaultNetwork(t *testing.T) {
+	// Regression: declaring platform_proxy at top level without also
+	// declaring `default:` caused some compose versions to skip
+	// auto-creating the project default network, leaving non-primary
+	// services (postgres, migrate) unable to resolve each other by
+	// DNS.
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    build: .
+  postgres:
+    image: postgres:16
+`,
+		AppSlug: "x", Color: domain.ColorBlue, Domains: []string{"x.local"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := reparse(t, out.YAML)
+	topNets, ok := doc["networks"].(map[string]any)
+	if !ok {
+		t.Fatal("top-level networks missing")
+	}
+	if _, ok := topNets["default"]; !ok {
+		t.Errorf("top-level networks should declare 'default'; got %v", topNets)
+	}
+	if _, ok := topNets["platform_proxy"]; !ok {
+		t.Errorf("top-level networks should declare 'platform_proxy'; got %v", topNets)
+	}
+}
+
 func TestTransformRespectsExplicitNetworksOnPrimary(t *testing.T) {
 	// When the user declared their own networks: list, we add
 	// platform_proxy only and DON'T sneak default back in — they

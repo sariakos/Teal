@@ -55,6 +55,15 @@ type TransformInput struct {
 	// set, the primary-service heuristic is skipped — each named
 	// service gets attached + labelled directly.
 	AttachServices []string
+
+	// BuildArgs lists every env-var key the engine wants surfaced as a
+	// `build.args:` entry on every service that has a `build:` block.
+	// The value is set to "${KEY}" so docker compose interpolates it
+	// from --env-file at build time. Combined with Dockerfile-side ARG
+	// declarations (handled by the deploy package), this makes the
+	// user's app see Teal-managed env vars at build time too — not just
+	// at runtime.
+	BuildArgs []string
 }
 
 // TransformOutput is what the caller needs to set up Traefik and inspect
@@ -166,6 +175,13 @@ func Transform(in TransformInput) (TransformOutput, error) {
 		}
 	}
 
+	if len(in.BuildArgs) > 0 {
+		for name, svc := range services {
+			injectBuildArgs(svc, in.BuildArgs)
+			services[name] = svc
+		}
+	}
+
 	doc.putServices(services)
 
 	rendered, err := Render(doc)
@@ -174,6 +190,49 @@ func Transform(in TransformInput) (TransformOutput, error) {
 	}
 	out.YAML = rendered
 	return out, nil
+}
+
+// injectBuildArgs adds `args:` entries to the service's `build:` block
+// for every key in keys. Each value is set to "${KEY}" so docker
+// compose interpolates from --env-file at build time. Services without
+// a build: block are left alone (image-only services don't run a
+// Dockerfile).
+//
+// Compose's `build:` accepts two shapes:
+//   - shorthand string: "build: ./app"  → promote to map form
+//   - long form map: "build: { context: ./app, args: {...} }"
+//
+// User-supplied args are preserved unless a key collides with one of
+// ours; the user's value wins (they presumably set it for a reason).
+func injectBuildArgs(svc map[string]any, keys []string) {
+	raw, ok := svc["build"]
+	if !ok {
+		return
+	}
+	build, ok := raw.(map[string]any)
+	if !ok {
+		// Shorthand "build: ./path" — promote to map form so we can
+		// attach args.
+		if ctx, isStr := raw.(string); isStr {
+			build = map[string]any{"context": ctx}
+		} else {
+			return
+		}
+	}
+	args, _ := build["args"].(map[string]any)
+	if args == nil {
+		// args might also be in list form (KEY=VALUE strings); we
+		// don't try to merge into list form — switch to map.
+		args = map[string]any{}
+	}
+	for _, k := range keys {
+		if _, exists := args[k]; exists {
+			continue
+		}
+		args[k] = "${" + k + "}"
+	}
+	build["args"] = args
+	svc["build"] = build
 }
 
 // stripContainerName removes container_name; Compose's project-name prefix

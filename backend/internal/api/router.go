@@ -124,6 +124,7 @@ func newRouter(d Deps) http.Handler {
 	}
 	logsH := &logsHandler{logger: d.Logger, store: d.Store, logbuf: d.LogBuffer, watcher: d.ContainerWatch, workdirRoot: d.WorkdirRoot}
 	servicesH := &servicesHandler{logger: d.Logger, store: d.Store, workdirRoot: d.WorkdirRoot}
+	requiredEnvH := &requiredEnvVarHandler{logger: d.Logger, store: d.Store, workdirRoot: d.WorkdirRoot}
 	metricsH := &metricsHandler{logger: d.Logger, store: d.Store}
 	notifH := &notificationsHandler{logger: d.Logger, store: d.Store}
 	platformH := &platformHandler{
@@ -178,6 +179,7 @@ func newRouter(d Deps) http.Handler {
 			r.Get("/apps/{slug}/deployments/{id}/log", logsH.deploymentLog)
 			r.Get("/apps/{slug}/containers", logsH.listContainers)
 			r.Get("/apps/{slug}/services", servicesH.list)
+			r.Get("/apps/{slug}/required-envvars", requiredEnvH.list)
 			r.Get("/apps/{slug}/metrics", metricsH.list)
 			r.Get("/containers/{id}/logs", logsH.containerLogs)
 			r.With(auth.RequireRole(domain.UserRoleMember)).Group(func(r chi.Router) {

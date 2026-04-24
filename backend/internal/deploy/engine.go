@@ -417,10 +417,34 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		CPULimit:       app.CPULimit,
 		MemoryLimit:    app.MemoryLimit,
 		AttachServices: attachServices,
+		BuildArgs:      envRes.Keys,
 	})
 	if err != nil {
 		e.fail(ctx, app, dep, "transform: "+err.Error())
 		return
+	}
+
+	// Patch the user's Dockerfile(s) in the checkout to declare ARG +
+	// ENV for every Teal-managed env var. Without this, the build.args
+	// we just injected via compose.Transform have no effect — Docker
+	// only honours --build-arg X=foo when the Dockerfile says ARG X.
+	// Patches are scoped to the workdir checkout (re-cloned each
+	// deploy); the user's repo is untouched.
+	if projectDir != "" && len(envRes.Keys) > 0 {
+		// Re-parse the rendered YAML to walk services. Cheaper to do
+		// this once here than to thread services through Transform's
+		// return.
+		if servicesMap, perr := composeServicesMap(tx.YAML); perr == nil {
+			patched, perr := patchDockerfilesForArgs(projectDir, servicesMap, envRes.Keys)
+			if perr != nil {
+				fmt.Fprintf(logFile, "[warn] dockerfile patch: %v (build may not see env vars)\n", perr)
+			}
+			for _, p := range patched {
+				fmt.Fprintf(logFile, "[info] patched %s — added ARG/ENV for %d Teal env var(s)\n", p, len(envRes.Keys))
+			}
+		} else {
+			fmt.Fprintf(logFile, "[warn] dockerfile patch: re-parse compose: %v\n", perr)
+		}
 	}
 	for _, w := range tx.Warnings {
 		fmt.Fprintf(logFile, "[warn] %s: %s — %s\n", w.Service, w.Code, w.Message)

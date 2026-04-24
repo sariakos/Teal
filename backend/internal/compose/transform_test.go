@@ -435,6 +435,79 @@ func TestTransformPreservesDefaultNetworkAccessForPrimary(t *testing.T) {
 	}
 }
 
+func TestTransformInjectsBuildArgsForServicesWithBuild(t *testing.T) {
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    build: .
+  postgres:
+    image: postgres:16
+`,
+		AppSlug:   "x",
+		Color:     domain.ColorBlue,
+		BuildArgs: []string{"APP_URL", "DATABASE_URL"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := reparse(t, out.YAML)
+	services, _ := doc["services"].(map[string]any)
+
+	app, _ := services["app"].(map[string]any)
+	build, _ := app["build"].(map[string]any)
+	if build == nil {
+		t.Fatalf("expected build: to be promoted to map form, got %#v", app["build"])
+	}
+	args, _ := build["args"].(map[string]any)
+	if args == nil {
+		t.Fatalf("expected build.args, got %#v", build)
+	}
+	for _, k := range []string{"APP_URL", "DATABASE_URL"} {
+		if v, ok := args[k]; !ok {
+			t.Errorf("build.args missing %s; got %v", k, args)
+		} else if v != "${"+k+"}" {
+			t.Errorf("build.args[%s] = %v, want ${%s}", k, v, k)
+		}
+	}
+
+	// Image-only services must NOT grow a build block.
+	pg, _ := services["postgres"].(map[string]any)
+	if _, hasBuild := pg["build"]; hasBuild {
+		t.Errorf("postgres should not gain a build directive: %v", pg)
+	}
+}
+
+func TestTransformPreservesUserSuppliedBuildArgs(t *testing.T) {
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    build:
+      context: .
+      args:
+        APP_URL: hardcoded-by-user
+`,
+		AppSlug:   "x",
+		Color:     domain.ColorBlue,
+		BuildArgs: []string{"APP_URL", "DATABASE_URL"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := reparse(t, out.YAML)
+	services, _ := doc["services"].(map[string]any)
+	app, _ := services["app"].(map[string]any)
+	build, _ := app["build"].(map[string]any)
+	args, _ := build["args"].(map[string]any)
+	if args["APP_URL"] != "hardcoded-by-user" {
+		t.Errorf("user-supplied APP_URL got overridden: %v", args["APP_URL"])
+	}
+	if args["DATABASE_URL"] != "${DATABASE_URL}" {
+		t.Errorf("DATABASE_URL should have been added: %v", args["DATABASE_URL"])
+	}
+}
+
 func TestTransformDeclaresTopLevelDefaultNetwork(t *testing.T) {
 	// Regression: declaring platform_proxy at top level without also
 	// declaring `default:` caused some compose versions to skip

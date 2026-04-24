@@ -20,6 +20,7 @@ type envHydrationResult struct {
 	Body     []byte
 	Hash     string   // hex SHA-256 of the canonical body; "" when set is empty
 	Warnings []string // appended to the deploy log; never fatal
+	Keys     []string // every env-var name that ended up in Body, sorted; consumed by build-arg auto-injection
 }
 
 // hydrateEnv resolves all env vars an App should receive and writes them
@@ -101,6 +102,7 @@ func hydrateEnv(ctx context.Context, st *store.Store, codec envCodec, app domain
 		Body:     body,
 		Hash:     hex.EncodeToString(sum[:]),
 		Warnings: warnings,
+		Keys:     keys,
 	}, nil
 }
 

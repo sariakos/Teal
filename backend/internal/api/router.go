@@ -46,6 +46,17 @@ type Deps struct {
 	TraefikStaticPath        string
 	TraefikDashboardInsecure bool
 
+	// TraefikDynamicDir is the directory the engine writes per-app
+	// dynconf files to. The settings handler also uses it to (re)write
+	// the platform UI's _platform.yml whenever HTTPS settings change.
+	TraefikDynamicDir string
+
+	// BaseDomain is the operator-set TEAL_BASE_DOMAIN. The settings
+	// handler uses it as the Host rule for the platform UI router.
+	// Empty disables platform-router regeneration (the file the
+	// installer wrote stays put).
+	BaseDomain string
+
 	// GitHub App: shared installation-token cache, the platform secret
 	// (used to HMAC-sign install-flow state), and the public base URL
 	// surfaced back to the UI as the callback hint. cmd/teal sets all
@@ -91,10 +102,12 @@ func newRouter(d Deps) http.Handler {
 	envH := &envVarsHandler{logger: d.Logger, store: d.Store, codec: d.Codec}
 	sharedEnvH := &sharedEnvVarsHandler{logger: d.Logger, store: d.Store, codec: d.Codec}
 	settingsH := &settingsHandler{
-		logger:            d.Logger,
-		store:             d.Store,
-		traefikStaticPath: d.TraefikStaticPath,
-		dashboardInsecure: d.TraefikDashboardInsecure,
+		logger:             d.Logger,
+		store:              d.Store,
+		traefikStaticPath:  d.TraefikStaticPath,
+		traefikDynamicDir:  d.TraefikDynamicDir,
+		baseDomain:         d.BaseDomain,
+		dashboardInsecure:  d.TraefikDashboardInsecure,
 	}
 	wsH := &wsHandler{logger: d.Logger, hub: d.Hub, allowedOrigins: d.DevCORSOrigins}
 	ghAppH := &gitHubAppHandler{

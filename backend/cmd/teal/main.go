@@ -196,6 +196,8 @@ func run() error {
 		WorkdirRoot:              cfg.WorkdirRoot,
 		TraefikStaticPath:        cfg.TraefikStaticPath,
 		TraefikDashboardInsecure: cfg.TraefikDashboardInsecure,
+		TraefikDynamicDir:        cfg.TraefikDynamicDir,
+		BaseDomain:               os.Getenv("TEAL_BASE_DOMAIN"),
 		GitHubAppTokenCache:      ghAppTokens,
 		StateSecret:              []byte(cfg.PlatformSecret),
 		PublicBaseURL:            publicBaseURL,

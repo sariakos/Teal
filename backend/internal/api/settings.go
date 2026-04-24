@@ -31,10 +31,12 @@ type settingMutationResponse struct {
 
 // settingsHandler exposes admin-only platform settings (KV).
 type settingsHandler struct {
-	logger            *slog.Logger
-	store             *store.Store
-	traefikStaticPath string
-	dashboardInsecure bool
+	logger             *slog.Logger
+	store              *store.Store
+	traefikStaticPath  string
+	traefikDynamicDir  string
+	baseDomain         string
+	dashboardInsecure  bool
 }
 
 // list returns every setting, ordered by key. We do NOT inject defaults
@@ -109,25 +111,69 @@ func (h *settingsHandler) delete(w http.ResponseWriter, r *http.Request) {
 // key affects it (anything in acme.* today). Returns true when the file
 // was rewritten, signalling that the operator must restart Traefik.
 //
+// Also re-renders the platform UI's _platform.yml whenever a key that
+// affects HTTPS behaviour changes (acme.email, https.redirect_enabled).
+// That file lives in the dynamic dir so Traefik picks it up live — no
+// restart needed for the platform-router half of the change.
+//
 // When TraefikStaticPath is empty (e.g. integration tests) we skip the
 // write but return true for acme keys so callers can still see the
 // "you should restart" hint in their tests.
 func (h *settingsHandler) regenerateStatic(r *http.Request, changedKey string) bool {
-	if !affectsStatic(changedKey) {
-		return false
+	restartHint := affectsStatic(changedKey)
+	if restartHint && h.traefikStaticPath != "" {
+		if err := traefik.ApplyStaticFromSettings(r.Context(), h.store.PlatformSettings, h.traefikStaticPath, h.dashboardInsecure); err != nil {
+			h.logger.Error("regenerate traefik static config", "err", err)
+		}
 	}
-	if h.traefikStaticPath == "" {
-		return true
+	if affectsPlatformRouter(changedKey) {
+		h.regeneratePlatformRouter(r)
 	}
-	if err := traefik.ApplyStaticFromSettings(r.Context(), h.store.PlatformSettings, h.traefikStaticPath, h.dashboardInsecure); err != nil {
-		h.logger.Error("regenerate traefik static config", "err", err)
+	return restartHint
+}
+
+// regeneratePlatformRouter writes the platform UI's dynconf to reflect
+// the current ACME + HTTPS-redirect settings. Silently no-ops when
+// either the dynamic dir or the base domain is unset (integration tests
+// or operators who didn't supply TEAL_BASE_DOMAIN).
+func (h *settingsHandler) regeneratePlatformRouter(r *http.Request) {
+	if h.traefikDynamicDir == "" || h.baseDomain == "" {
+		return
 	}
-	return true
+	email, err := h.store.PlatformSettings.GetOrDefault(r.Context(), domain.SettingACMEEmail, "")
+	if err != nil {
+		h.logger.Error("read acme email", "err", err)
+		return
+	}
+	tlsEnabled := email != ""
+	// Same default as the engine: HTTPS-only by default once ACME is on,
+	// admins opt out by setting https.redirect_enabled=false.
+	rd, err := h.store.PlatformSettings.GetOrDefault(r.Context(), domain.SettingHTTPSRedirect, "true")
+	if err != nil {
+		h.logger.Error("read https redirect setting", "err", err)
+		return
+	}
+	httpsRedirect := tlsEnabled && rd != "false"
+	if err := traefik.WritePlatformRouter(h.traefikDynamicDir, traefik.PlatformRouterOptions{
+		BaseDomain:    h.baseDomain,
+		TLSEnabled:    tlsEnabled,
+		HTTPSRedirect: httpsRedirect,
+	}); err != nil {
+		h.logger.Error("write platform router", "err", err)
+	}
 }
 
 func affectsStatic(key string) bool {
 	switch key {
 	case domain.SettingACMEEmail, domain.SettingACMEStaging:
+		return true
+	}
+	return false
+}
+
+func affectsPlatformRouter(key string) bool {
+	switch key {
+	case domain.SettingACMEEmail, domain.SettingHTTPSRedirect:
 		return true
 	}
 	return false

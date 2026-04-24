@@ -716,11 +716,14 @@ func (e *Engine) tlsFlagsFor(ctx context.Context) (tlsEnabled, redirect bool, er
 	if email == "" {
 		return false, false, nil
 	}
-	rd, err := e.store.PlatformSettings.GetOrDefault(ctx, domain.SettingHTTPSRedirect, "false")
+	// HTTPS-only by default once ACME is configured. Admins can opt out
+	// by explicitly setting https.redirect_enabled=false (e.g. when an
+	// HTTP-only health check sits behind a per-app router).
+	rd, err := e.store.PlatformSettings.GetOrDefault(ctx, domain.SettingHTTPSRedirect, "true")
 	if err != nil {
 		return true, false, err
 	}
-	return true, rd == "true", nil
+	return true, rd != "false", nil
 }
 
 // resolveGitAuth decrypts the App's git credential and returns it as a

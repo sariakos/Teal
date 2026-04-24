@@ -487,19 +487,36 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		}
 		primaryContainerID = id
 
+		// Resolve a target for the healthcheck. Three cases, picked by
+		// ModeAuto via pickMode:
+		//   - compose declared a port (tx.PortInContainer > 0) → pass
+		//     HTTPHostPort, HTTPProbeMode polls it until 2xx/3xx/4xx.
+		//   - Coolify-style (no port in compose) → pass TCPProbeIP,
+		//     TCPProbeAnyMode cycles CommonHTTPPorts every tick until
+		//     one accepts a connection. This tolerates slow depends_on
+		//     chains (e.g. app blocked until postgres passes its own
+		//     healthcheck).
+		//   - container has no platform-network IP yet → fall through
+		//     to RunningOnlyMode.
 		hostPort := ""
-		if tx.PortInContainer > 0 {
-			insp, err := e.docker.ContainerInspect(ctx, id)
-			if err == nil {
-				if ip := insp.NetworkIPs[traefik.PlatformNetworkName]; ip != "" {
+		tcpProbeIP := ""
+		insp, inspErr := e.docker.ContainerInspect(ctx, id)
+		if inspErr == nil {
+			if ip := insp.NetworkIPs[traefik.PlatformNetworkName]; ip != "" {
+				if tx.PortInContainer > 0 {
 					hostPort = fmt.Sprintf("%s:%d", ip, tx.PortInContainer)
+				} else {
+					tcpProbeIP = ip
 				}
 			}
+		} else {
+			fmt.Fprintf(logFile, "[warn] healthcheck: container inspect: %v\n", inspErr)
 		}
 		if err := Wait(ctx, e.docker, id, CheckConfig{
 			Mode:         ModeAuto,
 			Timeout:      e.cfg.HealthTimeout,
 			HTTPHostPort: hostPort,
+			TCPProbeIP:   tcpProbeIP,
 		}); err != nil {
 			e.fail(ctx, app, dep, "healthcheck: "+err.Error())
 			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)

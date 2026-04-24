@@ -33,6 +33,15 @@ const (
 	// RunningOnlyMode waits for State to be "running" continuously for
 	// MinUpDuration. Last-resort for background workers with no signal.
 	RunningOnlyMode
+
+	// TCPProbeAnyMode dials every port in a candidate list against an
+	// IP and returns success as soon as one accepts a connection. Used
+	// when we have the container's network IP but the compose doesn't
+	// declare a port (Coolify-style) — the healthcheck can't commit to
+	// a single port up front, so it re-scans each tick until the app
+	// opens its listening socket (including after slow depends_on
+	// healthchecks unblock startup).
+	TCPProbeAnyMode
 )
 
 // CheckConfig configures Wait. Defaults are filled in by Wait when fields
@@ -45,6 +54,11 @@ type CheckConfig struct {
 	HTTPHostPort   string        // HTTPProbeMode target, e.g. "172.18.0.5:80"
 	HTTPPath       string        // default "/"
 	HTTPClient     *http.Client  // optional override; default 2s timeout
+	// TCPProbeIP + TCPProbePorts drive TCPProbeAnyMode. IP is the
+	// container's platform-network address; ports default to
+	// CommonHTTPPorts when left nil.
+	TCPProbeIP     string
+	TCPProbePorts  []int
 }
 
 // Wait blocks until the container reaches readiness per cfg, or the context
@@ -61,7 +75,7 @@ func Wait(ctx context.Context, dock docker.Client, containerID string, cfg Check
 		if err != nil {
 			return fmt.Errorf("healthcheck: initial inspect: %w", err)
 		}
-		mode = pickMode(insp, cfg.HTTPHostPort)
+		mode = pickMode(insp, cfg.HTTPHostPort, cfg.TCPProbeIP)
 	}
 
 	switch mode {
@@ -69,18 +83,27 @@ func Wait(ctx context.Context, dock docker.Client, containerID string, cfg Check
 		return waitDockerHealth(dctx, dock, containerID, cfg.PollInterval)
 	case HTTPProbeMode:
 		return waitHTTP(dctx, cfg.HTTPClient, cfg.HTTPHostPort, cfg.HTTPPath, cfg.PollInterval)
+	case TCPProbeAnyMode:
+		ports := cfg.TCPProbePorts
+		if len(ports) == 0 {
+			ports = CommonHTTPPorts
+		}
+		return waitTCPAny(dctx, cfg.TCPProbeIP, ports, cfg.PollInterval)
 	case RunningOnlyMode:
 		return waitRunning(dctx, dock, containerID, cfg.PollInterval, cfg.MinUpDuration)
 	}
 	return fmt.Errorf("healthcheck: unknown mode %d", mode)
 }
 
-func pickMode(insp docker.ContainerInspect, httpHostPort string) CheckMode {
+func pickMode(insp docker.ContainerInspect, httpHostPort, tcpProbeIP string) CheckMode {
 	if insp.Health != "" {
 		return DockerHealthMode
 	}
 	if httpHostPort != "" {
 		return HTTPProbeMode
+	}
+	if tcpProbeIP != "" {
+		return TCPProbeAnyMode
 	}
 	return RunningOnlyMode
 }
@@ -148,6 +171,26 @@ func waitHTTP(ctx context.Context, client *http.Client, hostPort, path string, i
 				return fmt.Errorf("healthcheck: HTTP probe did not succeed (last: %v): %w", lastErr, ctx.Err())
 			}
 			return fmt.Errorf("healthcheck: HTTP probe did not succeed: %w", ctx.Err())
+		case <-t.C:
+		}
+	}
+}
+
+// waitTCPAny polls CommonHTTPPorts on ip every interval until one
+// accepts a TCP connection. Same per-port budget as the Traefik-flip
+// probe (500ms). Succeeds on the first responder; the engine then picks
+// the definitive port for Traefik via its own detectPort call.
+func waitTCPAny(ctx context.Context, ip string, ports []int, interval time.Duration) error {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		if port, err := ProbeHTTPPort(ctx, ip, ports, 500*time.Millisecond); err == nil {
+			_ = port
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("healthcheck: no port on %s accepted a connection (tried %v): %w", ip, ports, ctx.Err())
 		case <-t.C:
 		}
 	}

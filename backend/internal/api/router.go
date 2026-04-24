@@ -103,6 +103,9 @@ func newRouter(d Deps) http.Handler {
 		stateSecret:   d.StateSecret,
 		publicBaseURL: d.PublicBaseURL,
 	}
+	ghAppWH := &gitHubAppWebhookHandler{
+		logger: d.Logger, store: d.Store, codec: d.Codec, engine: d.Engine,
+	}
 	logsH := &logsHandler{logger: d.Logger, store: d.Store, logbuf: d.LogBuffer, watcher: d.ContainerWatch, workdirRoot: d.WorkdirRoot}
 	metricsH := &metricsHandler{logger: d.Logger, store: d.Store}
 	notifH := &notificationsHandler{logger: d.Logger, store: d.Store}
@@ -120,6 +123,11 @@ func newRouter(d Deps) http.Handler {
 		r.Post("/login", authH.login)
 		r.Post("/register-bootstrap", authH.registerBootstrap)
 		r.Post("/webhooks/github/{slug}", webhookH.handle)
+
+		// GitHub App centralized webhook. One URL for all installations
+		// of the platform's App; routes by repo full name. HMAC against
+		// the platform-wide webhook secret.
+		r.Post("/webhooks/github-app", ghAppWH.handle)
 
 		// GitHub App install callback. GitHub redirects the user's
 		// browser here after they pick which repos to install on; the

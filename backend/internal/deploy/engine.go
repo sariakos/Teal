@@ -518,6 +518,12 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 			HTTPHostPort: hostPort,
 			TCPProbeIP:   tcpProbeIP,
 		}); err != nil {
+			// Dump the container's tail to the deploy log BEFORE
+			// teardown — once Down runs the container is gone and
+			// `docker logs` is useless. This is the difference
+			// between "your app crashed somehow" and "your app
+			// crashed with this stack trace".
+			dumpContainerLogs(ctx, e.docker, id, primaryContainerName(insp, app.Slug, string(dep.Color), tx.PrimaryService), logFile)
 			e.fail(ctx, app, dep, "healthcheck: "+err.Error()+containerDiagnostic(ctx, e.docker, id, primaryContainerName(insp, app.Slug, string(dep.Color), tx.PrimaryService)))
 			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return

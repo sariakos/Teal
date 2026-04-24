@@ -51,6 +51,9 @@ func (f *fakeDocker) StreamContainerLogs(_ context.Context, _ string) (<-chan do
 	close(errs)
 	return lines, errs, nil
 }
+func (f *fakeDocker) TailContainerLogs(_ context.Context, _ string, _ int) (string, error) {
+	return "", nil
+}
 func (f *fakeDocker) VolumeRemove(_ context.Context, _ string, _ bool) error { return nil }
 func (f *fakeDocker) Ping(_ context.Context) error                            { return nil }
 func (f *fakeDocker) Close() error                                            { return nil }

@@ -45,6 +45,9 @@ func (d *dockerStub) StreamContainerLogs(_ context.Context, _ string) (<-chan do
 	close(errs)
 	return lines, errs, nil
 }
+func (d *dockerStub) TailContainerLogs(_ context.Context, _ string, _ int) (string, error) {
+	return "", nil
+}
 func (d *dockerStub) VolumeRemove(_ context.Context, _ string, _ bool) error { return nil }
 func (d *dockerStub) Ping(_ context.Context) error                            { return nil }
 func (d *dockerStub) Close() error                                            { return nil }

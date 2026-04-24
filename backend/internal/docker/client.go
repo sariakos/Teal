@@ -60,6 +60,11 @@ type Client interface {
 	ContainerInspect(ctx context.Context, id string) (ContainerInspect, error)
 	ContainerStats(ctx context.Context, id string) (ContainerStats, error)
 	StreamContainerLogs(ctx context.Context, id string) (<-chan ContainerLogLine, <-chan error, error)
+	// TailContainerLogs returns the last `tail` lines of the
+	// container's stdout+stderr as a single combined string. Used by
+	// the deploy engine to dump a crash trace into the deploy log
+	// before tearing down a failed container.
+	TailContainerLogs(ctx context.Context, id string, tail int) (string, error)
 	VolumeRemove(ctx context.Context, name string, force bool) error
 	Ping(ctx context.Context) error
 	Close() error
@@ -320,6 +325,44 @@ func (r *realClient) StreamContainerLogs(ctx context.Context, id string) (<-chan
 	}()
 
 	return lines, errs, nil
+}
+
+// TailContainerLogs reads the last `tail` lines of the container's
+// stdout+stderr in a single shot (no follow). The two streams are
+// demuxed and merged in arrival order. Lines longer than 1 MiB are
+// truncated.
+func (r *realClient) TailContainerLogs(ctx context.Context, id string, tail int) (string, error) {
+	if tail <= 0 {
+		tail = 80
+	}
+	rc, err := r.c.ContainerLogs(ctx, id, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     false,
+		Timestamps: false,
+		Tail:       fmt.Sprintf("%d", tail),
+	})
+	if err != nil {
+		return "", fmt.Errorf("docker: container logs: %w", err)
+	}
+	defer rc.Close()
+
+	var stdout, stderr strings.Builder
+	if _, err := stdcopy.StdCopy(&stdout, &stderr, rc); err != nil {
+		// Some daemons return io.EOF here even on success; treat any
+		// data we already collected as authoritative.
+	}
+	// Combine: stderr first (where crash traces usually go), then
+	// stdout. A perfectly time-merged view would need timestamps;
+	// callers want "what does the container say it died from", and
+	// stderr-first answers that ~90% of the time.
+	if stderr.Len() == 0 {
+		return stdout.String(), nil
+	}
+	if stdout.Len() == 0 {
+		return stderr.String(), nil
+	}
+	return "[stderr]\n" + stderr.String() + "\n[stdout]\n" + stdout.String(), nil
 }
 
 // ContainerStats returns one snapshot of container resource usage. The

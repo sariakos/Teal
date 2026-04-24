@@ -48,6 +48,9 @@ func (fakeDockerClient) StreamContainerLogs(ctx context.Context, _ string) (<-ch
 	close(errs)
 	return lines, errs, nil
 }
+func (fakeDockerClient) TailContainerLogs(_ context.Context, _ string, _ int) (string, error) {
+	return "", nil
+}
 func (fakeDockerClient) VolumeRemove(ctx context.Context, _ string, _ bool) error { return nil }
 func (fakeDockerClient) Ping(ctx context.Context) error                           { return nil }
 func (fakeDockerClient) Close() error                                              { return nil }

@@ -158,16 +158,67 @@ func TestTransformErrorsWhenAmbiguousPrimaryLabel(t *testing.T) {
 	}
 }
 
-func TestTransformErrorsWhenNoRoutableServiceAndDomainsRequested(t *testing.T) {
+func TestTransformErrorsWhenAmbiguousMultiServiceWithoutHints(t *testing.T) {
+	// Multiple services, none has ports:, none has build:, no teal.primary
+	// label. The heuristic has nothing to latch onto — users must either
+	// add the label or use per-service Routes.
 	in := TransformInput{
 		UserYAML: `services:
   worker:
     image: bg-job
+  cache:
+    image: redis
 `,
 		AppSlug: "x", Color: domain.ColorBlue, Domains: []string{"x.local"},
 	}
-	if _, err := Transform(in); err == nil || !strings.Contains(err.Error(), "no service") {
-		t.Errorf("expected no-routable-service error, got %v", err)
+	if _, err := Transform(in); err == nil || !strings.Contains(err.Error(), "cannot determine") {
+		t.Errorf("expected cannot-determine error, got %v", err)
+	}
+}
+
+func TestTransformSingleServiceRoutesWithoutPorts(t *testing.T) {
+	// Coolify-style compose: no ports:, no labels. A single service
+	// should still route — the engine's port probe will pick the port
+	// at deploy time.
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    image: my-app
+`,
+		AppSlug: "x", Color: domain.ColorBlue, Domains: []string{"x.local"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	if out.PrimaryService != "app" {
+		t.Errorf("PrimaryService = %q, want app", out.PrimaryService)
+	}
+	if out.PortInContainer != 0 {
+		t.Errorf("PortInContainer = %d, want 0 (probe at runtime)", out.PortInContainer)
+	}
+}
+
+func TestTransformPicksBuildServiceWhenNoPorts(t *testing.T) {
+	// Multiple services, the app builds from source, support services
+	// use official images. build: is the "route me" signal.
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    build: .
+  postgres:
+    image: postgres:16
+  migrate:
+    image: migrate/migrate
+`,
+		AppSlug: "x", Color: domain.ColorBlue, Domains: []string{"x.local"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	if out.PrimaryService != "app" {
+		t.Errorf("PrimaryService = %q, want app (the build: service)", out.PrimaryService)
 	}
 }
 

@@ -278,9 +278,13 @@ func appendEnvFile(svc map[string]any, path string) {
 // Order of precedence:
 //  1. The single service with label teal.primary=true.
 //  2. The first service (alphabetical) with a non-empty ports list.
+//  3. The single service with a build: section (Coolify-style compose
+//     strips ports, so the "service with source code" is the best
+//     remaining signal).
+//  4. The only service, if there's exactly one.
 // Returns the service name and an in-container port to use as the routing
-// target. Port detection is best-effort; the engine has its own Docker-side
-// fallback if we report 0.
+// target. Port detection is best-effort — when no ports: block exists the
+// engine's TCP port probe (see deploy.CommonHTTPPorts) takes over.
 func pickPrimary(services map[string]map[string]any) (string, int, error) {
 	// Stable order so the heuristic is deterministic across runs.
 	names := make([]string, 0, len(services))
@@ -312,7 +316,29 @@ func pickPrimary(services map[string]map[string]any) (string, int, error) {
 		}
 	}
 
-	return "", 0, fmt.Errorf("compose: no service has ports: or label %s=true; cannot determine routing target", LabelPrimary)
+	// Pass 3: single service with build:. Coolify-style composes drop
+	// ports: altogether, so "the one building from source" is the
+	// best remaining signal that this is the user's app. Port=0 lets
+	// the engine's TCP probe decide.
+	var withBuild []string
+	for _, n := range names {
+		if _, ok := services[n]["build"]; ok {
+			withBuild = append(withBuild, n)
+		}
+	}
+	if len(withBuild) == 1 {
+		return withBuild[0], 0, nil
+	}
+
+	// Pass 4: single-service compose.
+	if len(names) == 1 {
+		return names[0], 0, nil
+	}
+
+	return "", 0, fmt.Errorf(
+		"compose: cannot determine which of %d services to route to — add `labels: { %s: \"true\" }` to one, or configure per-service Routes in the app's Settings tab",
+		len(names), LabelPrimary,
+	)
 }
 
 // attachPlatformNetwork ensures platform_proxy is in the service's

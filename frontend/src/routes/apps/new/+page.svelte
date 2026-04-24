@@ -27,7 +27,7 @@
 
 	// Git mode
 	let gitUrl = $state('');
-	let gitAuthKind = $state<GitAuthKind>('ssh');
+	let gitAuthKind = $state<GitAuthKind>('github_app');
 	let gitCredential = $state('');
 	let gitComposePath = $state('docker-compose.yml');
 
@@ -270,12 +270,17 @@
 								bind:value={gitAuthKind}
 								class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
 							>
+								<option value="github_app">GitHub App (recommended; install on the repo after save)</option>
 								<option value="ssh">SSH deploy key (Teal generates a keypair)</option>
 								<option value="pat">Personal access token</option>
 								<option value="">Public repo (no auth)</option>
 							</select>
 							<p class="mt-1 text-xs text-zinc-500">
-								{#if gitAuthKind === 'ssh'}
+								{#if gitAuthKind === 'github_app'}
+									Save the app, then click <strong>Install on a repo</strong> on its Settings tab to grant
+									access — short-lived tokens, no key copying. Requires the platform GitHub App to be
+									configured at <code>/settings/github-app</code>.
+								{:else if gitAuthKind === 'ssh'}
 									After save, copy the public key shown and paste it into your GitHub repo → Settings → Deploy keys.
 								{:else if gitAuthKind === 'pat'}
 									Generate a fine-grained PAT in GitHub with read access to this repo, then paste it below.

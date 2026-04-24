@@ -22,11 +22,21 @@ export type AppStatus = 'idle' | 'deploying' | 'running' | 'failed' | 'stopped';
 export type Color = 'blue' | 'green' | '';
 export type GitAuthKind = '' | 'ssh' | 'pat' | 'github_app';
 
+// Route is one (service, domain) pair plus an optional container-port
+// override. When an app has any Routes, the legacy single-domain
+// `domains` field is ignored by the engine.
+export interface Route {
+	service?: string; // empty => the compose-detected primary service
+	domain: string;
+	port?: number; // optional override; otherwise auto-probed
+}
+
 export interface App {
 	id: number;
 	slug: string;
 	name: string;
 	domains: string[];
+	routes: Route[];
 	activeColor: Color;
 	autoDeployBranch: string;
 	autoDeployEnabled: boolean;

@@ -9,8 +9,10 @@
 		AppDetail,
 		Deployment,
 		DeploymentPhase,
-		GitAuthKind
+		GitAuthKind,
+		Route
 	} from '$lib/api/types';
+	import { servicesApi, type ServiceInfo } from '$lib/api/services';
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
@@ -158,6 +160,22 @@
 	let settingsError = $state<string | null>(null);
 	let saving = $state(false);
 
+	// ------- Routes card state -------
+	// services: compose-parsed list from GET /apps/{slug}/services. Keyed
+	// by service name in routeByService so the per-service inputs survive
+	// re-fetches without clobbering unsaved edits.
+	let services = $state<ServiceInfo[]>([]);
+	let servicesSource = $state<'checkout' | 'stored' | 'none' | ''>('');
+	let servicesHint = $state<string>('');
+	let servicesError = $state<string | null>(null);
+	let servicesLoading = $state(false);
+	// Per-service domain + optional port. "" domain means no route for
+	// this service (skipped on save). Port "" means auto-probe.
+	let routeByService = $state<Record<string, { domain: string; port: string }>>({});
+	let routesSaving = $state(false);
+	let routesError = $state<string | null>(null);
+	let routesSaved = $state(false);
+
 	// Revealed-once values that the UI must show prominently until dismissed.
 	let revealedSecret = $state<string | null>(null);
 	let revealedPublicKey = $state<string | null>(null);
@@ -181,6 +199,78 @@
 		formDomains = (a.domains ?? []).join(', ');
 	}
 
+	function seedRoutesFromApp(a: AppDetail, svcs: ServiceInfo[]) {
+		// Build a fresh map keyed by every known service plus any
+		// "phantom" service names that appear in saved Routes but not
+		// in the current compose (so the user can still edit/delete
+		// stale routes after a service rename).
+		const next: Record<string, { domain: string; port: string }> = {};
+		for (const s of svcs) {
+			next[s.name] = { domain: '', port: '' };
+		}
+		for (const r of a.routes ?? []) {
+			const key = r.service ?? '';
+			if (!(key in next)) next[key] = { domain: '', port: '' };
+			next[key] = {
+				domain: r.domain ?? '',
+				port: r.port ? String(r.port) : ''
+			};
+		}
+		routeByService = next;
+	}
+
+	async function loadServices() {
+		servicesLoading = true;
+		servicesError = null;
+		try {
+			const r = await servicesApi.list(slug);
+			services = r.services;
+			servicesSource = r.source;
+			servicesHint = r.hint ?? '';
+			if (app) seedRoutesFromApp(app, services);
+		} catch (err) {
+			servicesError = err instanceof ApiError ? err.message : 'Could not load services';
+			services = [];
+			servicesSource = '';
+		} finally {
+			servicesLoading = false;
+		}
+	}
+
+	async function saveRoutes() {
+		if (!app) return;
+		routesSaving = true;
+		routesError = null;
+		routesSaved = false;
+		try {
+			const routes: Route[] = [];
+			for (const [svc, v] of Object.entries(routeByService)) {
+				const domain = v.domain.trim();
+				if (!domain) continue;
+				const r: Route = { domain };
+				if (svc !== '') r.service = svc;
+				if (v.port.trim() !== '') {
+					const n = Number(v.port);
+					if (!Number.isInteger(n) || n <= 0 || n > 65535) {
+						routesError = `Port for "${svc}" must be 1–65535`;
+						routesSaving = false;
+						return;
+					}
+					r.port = n;
+				}
+				routes.push(r);
+			}
+			const resp = await appsApi.update(slug, { routes });
+			app = resp;
+			seedRoutesFromApp(resp, services);
+			routesSaved = true;
+		} catch (err) {
+			routesError = err instanceof ApiError ? err.message : 'Save failed';
+		} finally {
+			routesSaving = false;
+		}
+	}
+
 	async function loadExistingDeployKey() {
 		if (!app || app.gitAuthKind !== 'ssh' || !app.hasGitCredential) {
 			existingPublicKey = null;
@@ -201,6 +291,7 @@
 		if (tab === 'settings' && app) {
 			seedSettingsForm(app);
 			loadExistingDeployKey();
+			void loadServices();
 		}
 		if (tab === 'overview' && app) {
 			void loadMetrics();
@@ -540,7 +631,86 @@
 				</Card>
 			{/if}
 
-			<Card title="Domains">
+			<Card title="Routes">
+				<p class="mb-3 text-sm text-zinc-500">
+					Give each service its own public hostname. Leave a service blank to keep it
+					private. Ports are auto-detected — only override when the probe gets it wrong.
+				</p>
+				{#if servicesLoading}
+					<p class="text-sm text-zinc-500">Loading services…</p>
+				{:else if servicesError}
+					<p class="text-sm text-red-600">{servicesError}</p>
+				{:else if servicesSource === 'none'}
+					<p class="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
+						{servicesHint || 'No compose available yet — deploy at least once so Teal can list services.'}
+					</p>
+				{:else if services.length === 0}
+					<p class="text-sm text-zinc-500">No services declared in the compose file.</p>
+				{:else}
+					<form
+						onsubmit={(e) => {
+							e.preventDefault();
+							void saveRoutes();
+						}}
+						class="space-y-3"
+					>
+						<div class="overflow-hidden rounded-md border border-zinc-200">
+							<table class="w-full text-sm">
+								<thead class="bg-zinc-50 text-xs uppercase text-zinc-500">
+									<tr>
+										<th class="px-3 py-2 text-left">Service</th>
+										<th class="px-3 py-2 text-left">Domain</th>
+										<th class="px-3 py-2 text-left">Port</th>
+									</tr>
+								</thead>
+								<tbody class="divide-y divide-zinc-100">
+									{#each services as svc (svc.name)}
+										<tr>
+											<td class="px-3 py-2 align-top">
+												<div class="font-medium text-zinc-800">{svc.name}</div>
+												<div class="text-xs text-zinc-500">
+													{svc.image || (svc.hasBuild ? 'built from source' : '—')}
+													{#if svc.exposedPorts && svc.exposedPorts.length > 0}
+														· ports: {svc.exposedPorts.join(', ')}
+													{/if}
+												</div>
+											</td>
+											<td class="px-3 py-2 align-top">
+												<Input
+													bind:value={routeByService[svc.name].domain}
+													placeholder="api.example.com"
+												/>
+											</td>
+											<td class="px-3 py-2 align-top">
+												<Input
+													bind:value={routeByService[svc.name].port}
+													placeholder="auto"
+												/>
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+						{#if routesError}
+							<div class="text-sm text-red-600">{routesError}</div>
+						{/if}
+						{#if routesSaved}
+							<div class="text-sm text-teal-700">Saved — redeploy to apply.</div>
+						{/if}
+						<div class="flex items-center justify-between">
+							<p class="text-xs text-zinc-500">
+								Source: {servicesSource}. HTTPS is added automatically once an LE cert is issued.
+							</p>
+							<Button type="submit" disabled={routesSaving}>
+								{routesSaving ? 'Saving…' : 'Save routes'}
+							</Button>
+						</div>
+					</form>
+				{/if}
+			</Card>
+
+			<Card title="Domains (legacy)">
 				<form
 					onsubmit={(e) => {
 						e.preventDefault();
@@ -550,7 +720,7 @@
 				>
 					<div>
 						<label for="domains" class="mb-1 block text-sm font-medium text-zinc-700">
-							Comma-separated hostnames Traefik should route to this app
+							Comma-separated hostnames — applied to the primary service only.
 						</label>
 						<Input
 							id="domains"
@@ -558,8 +728,8 @@
 							placeholder="myapp.example.com, alt.example.com"
 						/>
 						<p class="mt-1 text-xs text-zinc-500">
-							Bare hostnames only — schemes (http://, https://) and ports are stripped on save.
-							HTTPS is added automatically once an LE cert is issued.
+							Used when no Routes are configured above. Bare hostnames only — schemes and ports
+							are stripped on save.
 						</p>
 					</div>
 					<div class="flex justify-end">

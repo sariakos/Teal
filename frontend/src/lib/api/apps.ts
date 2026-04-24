@@ -5,7 +5,8 @@ import type {
 	AppInitSecrets,
 	DeployKey,
 	Deployment,
-	GitAuthKind
+	GitAuthKind,
+	Route
 } from './types';
 
 export interface CreateAppInput {
@@ -24,6 +25,7 @@ export interface CreateAppInput {
 	gitCredential?: string;
 	gitBranch?: string;
 	gitComposePath?: string;
+	routes?: Route[];
 }
 
 export interface UpdateAppInput {
@@ -43,6 +45,7 @@ export interface UpdateAppInput {
 	notificationEmail?: string;
 	githubAppInstallationId?: number;
 	githubAppRepo?: string;
+	routes?: Route[];
 }
 
 export const appsApi = {

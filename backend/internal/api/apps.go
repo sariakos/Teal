@@ -26,17 +26,18 @@ import (
 // domain.App so adding fields here doesn't silently leak schema-internal
 // state to clients.
 type appResponse struct {
-	ID                    int64     `json:"id"`
-	Slug                  string    `json:"slug"`
-	Name                  string    `json:"name"`
-	Domains               []string  `json:"domains"`
-	ActiveColor           string    `json:"activeColor,omitempty"`
-	AutoDeployBranch      string    `json:"autoDeployBranch"`
-	AutoDeployEnabled     bool      `json:"autoDeployEnabled"`
-	Status                string    `json:"status"`
-	LastDeployedCommitSHA string    `json:"lastDeployedCommitSha,omitempty"`
-	CreatedAt             time.Time `json:"createdAt"`
-	UpdatedAt             time.Time `json:"updatedAt"`
+	ID                    int64          `json:"id"`
+	Slug                  string         `json:"slug"`
+	Name                  string         `json:"name"`
+	Domains               []string       `json:"domains"`
+	Routes                []domain.Route `json:"routes"`
+	ActiveColor           string         `json:"activeColor,omitempty"`
+	AutoDeployBranch      string         `json:"autoDeployBranch"`
+	AutoDeployEnabled     bool           `json:"autoDeployEnabled"`
+	Status                string         `json:"status"`
+	LastDeployedCommitSHA string         `json:"lastDeployedCommitSha,omitempty"`
+	CreatedAt             time.Time      `json:"createdAt"`
+	UpdatedAt             time.Time      `json:"updatedAt"`
 }
 
 // appDetailResponse extends appResponse with the compose file plus the git
@@ -78,6 +79,7 @@ func appToResponse(a domain.App) appResponse {
 		Slug:                  a.Slug,
 		Name:                  a.Name,
 		Domains:               splitDomainsField(a.Domains),
+		Routes:                routesOrEmpty(a.Routes),
 		ActiveColor:           string(a.ActiveColor),
 		AutoDeployBranch:      a.AutoDeployBranch,
 		AutoDeployEnabled:     a.AutoDeployEnabled,
@@ -671,6 +673,15 @@ var slugRe = regexp.MustCompile(`^[a-z][a-z0-9-]{1,38}[a-z0-9]$`)
 
 func validSlug(s string) bool {
 	return slugRe.MatchString(s)
+}
+
+// routesOrEmpty maps nil → []domain.Route{} so the JSON wire shape is
+// always an array (the frontend can iterate without nil checks).
+func routesOrEmpty(in []domain.Route) []domain.Route {
+	if in == nil {
+		return []domain.Route{}
+	}
+	return in
 }
 
 // splitDomainsField turns the stored comma-separated string into a slice

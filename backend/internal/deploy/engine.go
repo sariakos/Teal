@@ -514,9 +514,18 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}
-		port := tx.PortInContainer
-		if port == 0 {
-			port = 80 // sensible default for HTTP services
+		// Auto-detect the service's listening port. The compose's
+		// ports: hint (PortInContainer) is a starting point; if it's
+		// missing or doesn't actually answer, probe a curated list of
+		// common HTTP ports. Removes the need for any compose
+		// modification or label for the 95% case.
+		port, err := detectPort(ctx, ip, tx.PortInContainer, func(format string, a ...any) {
+			fmt.Fprintf(logFile, format, a...)
+		})
+		if err != nil {
+			e.fail(ctx, app, dep, "port detection: "+err.Error())
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
+			return
 		}
 		e.setPhase(dep.ID, PhaseFlipTraffic)
 		tlsEnabled, redirect, err := e.tlsFlagsFor(ctx)

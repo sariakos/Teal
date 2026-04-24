@@ -153,6 +153,7 @@
 	let formMemoryLimit = $state('');
 	let formNotifyWebhookUrl = $state('');
 	let formNotifyEmail = $state('');
+	let formDomains = $state(''); // comma-separated; same shape as the New App form
 	let manualInstallationID = $state<string>('');
 	let settingsError = $state<string | null>(null);
 	let saving = $state(false);
@@ -177,6 +178,7 @@
 		formMemoryLimit = a.memoryLimit ?? '';
 		formNotifyWebhookUrl = a.notificationWebhookUrl ?? '';
 		formNotifyEmail = a.notificationEmail ?? '';
+		formDomains = (a.domains ?? []).join(', ');
 	}
 
 	async function loadExistingDeployKey() {
@@ -220,7 +222,11 @@
 				cpuLimit: formCPULimit,
 				memoryLimit: formMemoryLimit,
 				notificationWebhookUrl: formNotifyWebhookUrl,
-				notificationEmail: formNotifyEmail
+				notificationEmail: formNotifyEmail,
+				domains: formDomains
+					.split(',')
+					.map((d) => d.trim())
+					.filter(Boolean)
 			});
 			if (resp.newWebhookSecret) revealedSecret = resp.newWebhookSecret;
 			if (resp.newPublicKey) {
@@ -381,7 +387,22 @@
 					<dl class="space-y-2 text-sm">
 						<div class="flex justify-between"><dt class="text-zinc-500">App status</dt><dd>{app.status}</dd></div>
 						<div class="flex justify-between"><dt class="text-zinc-500">Active color</dt><dd>{app.activeColor || '—'}</dd></div>
-						<div class="flex justify-between"><dt class="text-zinc-500">Domains</dt><dd>{app.domains.join(', ') || '—'}</dd></div>
+						<div class="flex justify-between gap-2">
+							<dt class="text-zinc-500">Domains</dt>
+							<dd class="truncate text-right">
+								{#if app.domains.length === 0}
+									—
+								{:else}
+									{#each app.domains as d, i}{#if i > 0}, {/if}<a
+											class="text-teal-700 hover:underline"
+											href={`https://${d}`}
+											target="_blank"
+											rel="noopener"
+										>{d}</a
+										>{/each}
+								{/if}
+							</dd>
+						</div>
 						<div class="flex justify-between"><dt class="text-zinc-500">Branch</dt><dd>{app.gitBranch || app.autoDeployBranch || '—'}</dd></div>
 						<div class="flex justify-between"><dt class="text-zinc-500">Last commit</dt><dd class="font-mono text-xs">{app.lastDeployedCommitSha || '—'}</dd></div>
 					</dl>
@@ -518,6 +539,34 @@
 					</div>
 				</Card>
 			{/if}
+
+			<Card title="Domains">
+				<form
+					onsubmit={(e) => {
+						e.preventDefault();
+						void saveSettings();
+					}}
+					class="space-y-3"
+				>
+					<div>
+						<label for="domains" class="mb-1 block text-sm font-medium text-zinc-700">
+							Comma-separated hostnames Traefik should route to this app
+						</label>
+						<Input
+							id="domains"
+							bind:value={formDomains}
+							placeholder="myapp.example.com, alt.example.com"
+						/>
+						<p class="mt-1 text-xs text-zinc-500">
+							Bare hostnames only — schemes (http://, https://) and ports are stripped on save.
+							HTTPS is added automatically once an LE cert is issued.
+						</p>
+					</div>
+					<div class="flex justify-end">
+						<Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+					</div>
+				</form>
+			</Card>
 
 			<Card title="Git source">
 				<form

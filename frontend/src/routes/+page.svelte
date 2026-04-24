@@ -142,7 +142,18 @@
 								{app.lastDeployedCommitSha ? app.lastDeployedCommitSha.slice(0, 7) : '—'}
 							</td>
 							<td class="py-2 text-zinc-600">
-								{app.domains.length > 0 ? app.domains.join(', ') : '—'}
+								{#if app.domains.length === 0}
+									—
+								{:else}
+									{#each app.domains as d, i}{#if i > 0}, {/if}<a
+											class="text-teal-700 hover:underline"
+											href={`https://${d}`}
+											target="_blank"
+											rel="noopener"
+											onclick={(e) => e.stopPropagation()}
+										>{d}</a
+										>{/each}
+								{/if}
 							</td>
 							<td class="py-2 text-right">
 								<a class="text-sm text-teal-700 hover:underline" href={`/apps/${app.slug}`}>

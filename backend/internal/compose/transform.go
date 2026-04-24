@@ -284,13 +284,30 @@ func pickPrimary(services map[string]map[string]any) (string, int, error) {
 	return "", 0, fmt.Errorf("compose: no service has ports: or label %s=true; cannot determine routing target", LabelPrimary)
 }
 
-// attachPlatformNetwork ensures platform_proxy is in the service's networks.
+// attachPlatformNetwork ensures platform_proxy is in the service's
+// networks list. When the user's compose left the service's networks
+// block empty (the common case), Compose puts the service on the
+// project's implicit `default` network so it can reach its siblings
+// (postgres, redis, etc.) by service name.
+//
+// The moment we declare ANY networks: list explicitly, Compose drops
+// that implicit default — so the primary service loses DNS for its
+// peers and intra-app calls start failing with EAI_AGAIN. Re-add
+// `default` here so platform_proxy is additive, not replacing.
+//
+// If the user already declared their own networks, we respect their
+// choice and add only platform_proxy — they opted out of the default
+// deliberately.
 func attachPlatformNetwork(svc map[string]any) {
+	userHadNoNetworks := svc["networks"] == nil
 	nets := normalizeNetworks(svc)
 	for _, n := range nets {
 		if n == PlatformNetworkAlias {
 			return
 		}
+	}
+	if userHadNoNetworks {
+		nets = append(nets, "default")
 	}
 	svc["networks"] = append(nets, PlatformNetworkAlias)
 }

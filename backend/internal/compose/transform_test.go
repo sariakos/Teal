@@ -339,3 +339,84 @@ func TestTransformSkipsInjectionWhenLimitsEmpty(t *testing.T) {
 		t.Errorf("should not have added a deploy block: %s", out.YAML)
 	}
 }
+
+func TestTransformPreservesDefaultNetworkAccessForPrimary(t *testing.T) {
+	// Regression: before the fix, the primary's networks list was
+	// rewritten to [platform_proxy] only, dropping the implicit
+	// default. The app could no longer reach sibling services
+	// (postgres, redis) by name and crashed with EAI_AGAIN.
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    image: my/app:latest
+    ports: ["3000"]
+  postgres:
+    image: postgres:16
+`,
+		AppSlug: "x", Color: domain.ColorBlue, Domains: []string{"x.local"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := reparse(t, out.YAML)
+	services, _ := doc["services"].(map[string]any)
+	app, _ := services["app"].(map[string]any)
+	rawNets, ok := app["networks"]
+	if !ok {
+		t.Fatal("primary service has no networks block after transform")
+	}
+	nets, ok := rawNets.([]any)
+	if !ok {
+		t.Fatalf("networks should be a slice, got %T", rawNets)
+	}
+	saw := map[string]bool{}
+	for _, n := range nets {
+		if s, ok := n.(string); ok {
+			saw[s] = true
+		}
+	}
+	if !saw["default"] {
+		t.Errorf("primary service should also be on 'default' so it can reach siblings; got %v", nets)
+	}
+	if !saw["platform_proxy"] {
+		t.Errorf("primary service must be on 'platform_proxy' for Traefik; got %v", nets)
+	}
+}
+
+func TestTransformRespectsExplicitNetworksOnPrimary(t *testing.T) {
+	// When the user declared their own networks: list, we add
+	// platform_proxy only and DON'T sneak default back in — they
+	// opted out of the default deliberately.
+	in := TransformInput{
+		UserYAML: `services:
+  app:
+    image: my/app:latest
+    ports: ["3000"]
+    networks: [internal]
+networks:
+  internal:
+`,
+		AppSlug: "x", Color: domain.ColorBlue, Domains: []string{"x.local"},
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := reparse(t, out.YAML)
+	services, _ := doc["services"].(map[string]any)
+	app, _ := services["app"].(map[string]any)
+	nets, _ := app["networks"].([]any)
+	saw := map[string]bool{}
+	for _, n := range nets {
+		if s, ok := n.(string); ok {
+			saw[s] = true
+		}
+	}
+	if saw["default"] {
+		t.Errorf("user-declared networks should not have 'default' silently added; got %v", nets)
+	}
+	if !saw["internal"] || !saw["platform_proxy"] {
+		t.Errorf("expected internal + platform_proxy; got %v", nets)
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/sariakos/teal/backend/internal/deploy"
 	"github.com/sariakos/teal/backend/internal/docker"
 	"github.com/sariakos/teal/backend/internal/domain"
+	"github.com/sariakos/teal/backend/internal/githubapp"
 	"github.com/sariakos/teal/backend/internal/logbuffer"
 	"github.com/sariakos/teal/backend/internal/realtime"
 	"github.com/sariakos/teal/backend/internal/store"
@@ -44,6 +45,15 @@ type Deps struct {
 	// leave it empty (no static config to write in unit tests).
 	TraefikStaticPath        string
 	TraefikDashboardInsecure bool
+
+	// GitHub App: shared installation-token cache, the platform secret
+	// (used to HMAC-sign install-flow state), and the public base URL
+	// surfaced back to the UI as the callback hint. cmd/teal sets all
+	// three; tests can leave them zero (the install flow is then
+	// disabled).
+	GitHubAppTokenCache *githubapp.TokenCache
+	StateSecret         []byte
+	PublicBaseURL       string
 }
 
 // NewServer returns an *http.Server with the Teal router configured.
@@ -87,6 +97,12 @@ func newRouter(d Deps) http.Handler {
 		dashboardInsecure: d.TraefikDashboardInsecure,
 	}
 	wsH := &wsHandler{logger: d.Logger, hub: d.Hub, allowedOrigins: d.DevCORSOrigins}
+	ghAppH := &gitHubAppHandler{
+		logger: d.Logger, store: d.Store, codec: d.Codec,
+		tokenCache:    d.GitHubAppTokenCache,
+		stateSecret:   d.StateSecret,
+		publicBaseURL: d.PublicBaseURL,
+	}
 	logsH := &logsHandler{logger: d.Logger, store: d.Store, logbuf: d.LogBuffer, watcher: d.ContainerWatch, workdirRoot: d.WorkdirRoot}
 	metricsH := &metricsHandler{logger: d.Logger, store: d.Store}
 	notifH := &notificationsHandler{logger: d.Logger, store: d.Store}
@@ -104,6 +120,13 @@ func newRouter(d Deps) http.Handler {
 		r.Post("/login", authH.login)
 		r.Post("/register-bootstrap", authH.registerBootstrap)
 		r.Post("/webhooks/github/{slug}", webhookH.handle)
+
+		// GitHub App install callback. GitHub redirects the user's
+		// browser here after they pick which repos to install on; the
+		// handler verifies the HMAC-signed state and stores the
+		// linkage. Unauth because GitHub is the caller — the state
+		// signature is the bearer of authority.
+		r.Get("/github-app/setup-callback", ghAppH.setupCallback)
 
 		// Authenticated endpoints. auth → CSRF order matters (CSRF needs
 		// the session attached by auth).
@@ -141,6 +164,7 @@ func newRouter(d Deps) http.Handler {
 				r.Post("/apps/{slug}/rotate-deploy-key", appsH.rotateDeployKey)
 				r.Post("/apps/{slug}/rotate-webhook-secret", appsH.rotateWebhookSecret)
 				r.Post("/apps/{slug}/rotate-notification-secret", appsH.rotateNotificationSecret)
+				r.Post("/apps/{slug}/install-github-app", ghAppH.startInstall)
 
 				r.Get("/apps/{slug}/envvars", envH.listApp)
 				r.Post("/apps/{slug}/envvars", envH.upsertApp)

@@ -60,5 +60,7 @@ export const appsApi = {
 	rotateWebhookSecret: (slug: string) =>
 		api.post<{ webhookSecret: string }>(`/apps/${slug}/rotate-webhook-secret`, {}),
 	rotateNotificationSecret: (slug: string) =>
-		api.post<{ webhookSecret: string }>(`/apps/${slug}/rotate-notification-secret`, {})
+		api.post<{ webhookSecret: string }>(`/apps/${slug}/rotate-notification-secret`, {}),
+	startGitHubAppInstall: (slug: string) =>
+		api.post<{ installUrl: string; callbackUrl: string }>(`/apps/${slug}/install-github-app`, {})
 };

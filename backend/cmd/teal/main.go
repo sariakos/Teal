@@ -172,6 +172,16 @@ func run() error {
 	}
 	rateLimiter := auth.NewLoginRateLimiter(loginRateLimitCapacity, loginRateLimitWindow)
 
+	// Public base URL for the GitHub App install callback hint.
+	// Operator-set TEAL_BASE_DOMAIN (the installer writes this);
+	// derived as https://<domain> when present, otherwise empty (the
+	// callback URL is just a UI hint — its absence doesn't break the
+	// flow, the user can compose the URL themselves).
+	publicBaseURL := ""
+	if d := os.Getenv("TEAL_BASE_DOMAIN"); d != "" {
+		publicBaseURL = "https://" + d
+	}
+
 	deps := api.Deps{
 		Logger:                   logger,
 		Store:                    st,
@@ -186,6 +196,9 @@ func run() error {
 		WorkdirRoot:              cfg.WorkdirRoot,
 		TraefikStaticPath:        cfg.TraefikStaticPath,
 		TraefikDashboardInsecure: cfg.TraefikDashboardInsecure,
+		GitHubAppTokenCache:      ghAppTokens,
+		StateSecret:              []byte(cfg.PlatformSecret),
+		PublicBaseURL:            publicBaseURL,
 	}
 	if cfg.Env == "dev" {
 		// Allow the SvelteKit dev server to call us with credentials.

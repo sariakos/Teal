@@ -558,8 +558,60 @@
 							<option value="">Public (no auth)</option>
 							<option value="ssh">SSH deploy key (Teal generates)</option>
 							<option value="pat">Personal access token</option>
+							<option value="github_app">GitHub App (recommended)</option>
 						</select>
 					</div>
+					{#if formGitAuthKind === 'github_app'}
+						<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+							{#if app.githubAppInstallationId}
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<div class="font-medium text-zinc-800">
+											Installed
+											{#if app.githubAppRepo}
+												on <code class="font-mono">{app.githubAppRepo}</code>
+											{/if}
+										</div>
+										<div class="text-xs text-zinc-500">
+											Installation ID: {app.githubAppInstallationId}
+										</div>
+									</div>
+									<Button
+										variant="secondary"
+										onclick={async () => {
+											try {
+												const r = await appsApi.startGitHubAppInstall(slug);
+												location.href = r.installUrl;
+											} catch (err) {
+												alert(err instanceof ApiError ? err.message : 'Could not start install');
+											}
+										}}
+									>
+										Reconfigure
+									</Button>
+								</div>
+							{:else}
+								<div class="flex items-center justify-between gap-3">
+									<p class="text-zinc-700">
+										After saving, click below to install the platform GitHub App on this repo.
+										Requires the platform App to be configured at <code>/settings/github-app</code>.
+									</p>
+									<Button
+										onclick={async () => {
+											try {
+												const r = await appsApi.startGitHubAppInstall(slug);
+												location.href = r.installUrl;
+											} catch (err) {
+												alert(err instanceof ApiError ? err.message : 'Could not start install');
+											}
+										}}
+									>
+										Install on a repo
+									</Button>
+								</div>
+							{/if}
+						</div>
+					{/if}
 					{#if formGitAuthKind === 'pat'}
 						<div>
 							<label for="credential" class="mb-1 block text-sm font-medium text-zinc-700">

@@ -20,7 +20,7 @@ export interface MeResponse {
 
 export type AppStatus = 'idle' | 'deploying' | 'running' | 'failed' | 'stopped';
 export type Color = 'blue' | 'green' | '';
-export type GitAuthKind = '' | 'ssh' | 'pat';
+export type GitAuthKind = '' | 'ssh' | 'pat' | 'github_app';
 
 export interface App {
 	id: number;
@@ -49,6 +49,8 @@ export interface AppDetail extends App {
 	notificationWebhookUrl?: string;
 	hasNotificationSecret?: boolean;
 	notificationEmail?: string;
+	githubAppInstallationId?: number;
+	githubAppRepo?: string;
 }
 
 // One-shot response from PATCH /apps/{slug} when git/webhook secrets are

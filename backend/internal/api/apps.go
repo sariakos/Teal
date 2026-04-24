@@ -208,7 +208,11 @@ func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "slug already in use")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "failed to create app")
+		// Log the underlying error server-side; surface a concise
+		// message + the error class to the client so a 500 here is
+		// debuggable without digging through container logs.
+		h.logger.Error("apps.Create failed", "slug", req.Slug, "err", err)
+		writeError(w, http.StatusInternalServerError, "failed to create app: "+err.Error())
 		return
 	}
 

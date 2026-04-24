@@ -34,14 +34,27 @@ func NewComposeRunner() *ComposeRunner {
 // so build contexts and bind-mount paths in the user's compose
 // resolve relative to it. For git-source apps this should be the
 // checkout dir (where `build: ./app` is meant to find <checkout>/app).
+//
+// EnvFilePath, when non-empty, is passed as docker compose's top-level
+// `--env-file`. This is what makes `${VAR}` interpolation in the
+// user's compose YAML resolve from Teal's per-app env vars. The
+// per-service `env_file:` directive (added by the compose transform)
+// covers the runtime container env; --env-file covers parse-time
+// interpolation. Both point at the same deploy.env so user-set vars
+// satisfy both layers.
 type ComposeOptions struct {
 	Project     string
 	ComposePath string
 	ProjectDir  string // empty → docker compose defaults to dir of -f file
+	EnvFilePath string // empty → docker compose tries .env in project dir
 }
 
 func (o ComposeOptions) baseArgs() []string {
-	args := []string{"compose", "-p", o.Project, "-f", o.ComposePath}
+	args := []string{"compose"}
+	if o.EnvFilePath != "" {
+		args = append(args, "--env-file", o.EnvFilePath)
+	}
+	args = append(args, "-p", o.Project, "-f", o.ComposePath)
 	if o.ProjectDir != "" {
 		args = append(args, "--project-directory", o.ProjectDir)
 	}

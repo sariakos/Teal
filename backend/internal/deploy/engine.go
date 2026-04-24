@@ -416,6 +416,13 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		Project:     project,
 		ComposePath: composePath,
 		ProjectDir:  projectDir,
+		// Provide Teal's per-app env vars to docker compose's
+		// interpolation context too — this makes `${POSTGRES_PASSWORD}`
+		// patterns in the user's compose resolve from the same
+		// deploy.env that env_file: would inject at runtime. Without
+		// this, interpolation happens against an empty environment and
+		// services that depend on substituted values fail at startup.
+		EnvFilePath: envPath,
 	}
 
 	// Pull or build. We branch on whether the transformed YAML carries any

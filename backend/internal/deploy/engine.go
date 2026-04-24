@@ -92,7 +92,7 @@ type EngineConfig struct {
 	TraefikDynamicDir string        // dir for per-app Traefik YAMLs; required
 	WorkdirKeep       int           // retention; default DefaultRetention
 	DrainPeriod       time.Duration // default DefaultDrainPeriod
-	HealthTimeout     time.Duration // per-deployment; default 60s
+	HealthTimeout     time.Duration // per-deployment; default 180s
 
 	// PlatformSecret is the master secret used to derive symmetric keys.
 	// Required so the engine can decrypt git credentials at deploy time.
@@ -158,7 +158,7 @@ func New(logger *slog.Logger, st *store.Store, dock docker.Client, cfg EngineCon
 		cfg.DrainPeriod = DefaultDrainPeriod
 	}
 	if cfg.HealthTimeout == 0 {
-		cfg.HealthTimeout = 60 * time.Second
+		cfg.HealthTimeout = 180 * time.Second
 	}
 	if len(cfg.PlatformSecret) == 0 {
 		return nil, errors.New("deploy: PlatformSecret is required")
@@ -190,7 +190,7 @@ func NewWithCodec(logger *slog.Logger, st *store.Store, dock docker.Client, cfg 
 		cfg.DrainPeriod = DefaultDrainPeriod
 	}
 	if cfg.HealthTimeout == 0 {
-		cfg.HealthTimeout = 60 * time.Second
+		cfg.HealthTimeout = 180 * time.Second
 	}
 	return &Engine{
 		logger: logger,
@@ -518,7 +518,7 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 			HTTPHostPort: hostPort,
 			TCPProbeIP:   tcpProbeIP,
 		}); err != nil {
-			e.fail(ctx, app, dep, "healthcheck: "+err.Error())
+			e.fail(ctx, app, dep, "healthcheck: "+err.Error()+containerDiagnostic(ctx, e.docker, id, primaryContainerName(insp, app.Slug, string(dep.Color), tx.PrimaryService)))
 			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return
 		}

@@ -97,6 +97,7 @@ type ContainerInspect struct {
 	ID            string
 	Name          string
 	State         string         // "running", "exited", ...
+	ExitCode      int            // process exit code; only meaningful when State == "exited"
 	Health        string         // "healthy", "unhealthy", "starting", "" (no healthcheck)
 	NetworkIPs    map[string]string // network name -> IPv4 address
 	ExposedPorts  []string       // e.g. "80/tcp", "443/tcp"
@@ -216,6 +217,7 @@ func (r *realClient) ContainerInspect(ctx context.Context, id string) (Container
 	}
 	if raw.State != nil {
 		out.State = raw.State.Status
+		out.ExitCode = raw.State.ExitCode
 		if raw.State.Health != nil {
 			out.Health = raw.State.Health.Status
 		}

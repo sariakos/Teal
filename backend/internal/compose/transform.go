@@ -48,6 +48,13 @@ type TransformInput struct {
 	// Empty values skip injection for that dimension.
 	CPULimit    string // e.g. "0.5", "2"
 	MemoryLimit string // e.g. "512m", "1g"
+
+	// AttachServices is the list of compose service names that need to
+	// be on the platform_proxy network so Traefik can reach them. The
+	// per-service routing flow passes one entry per Route. When this is
+	// set, the primary-service heuristic is skipped — each named
+	// service gets attached + labelled directly.
+	AttachServices []string
 }
 
 // TransformOutput is what the caller needs to set up Traefik and inspect
@@ -106,8 +113,35 @@ func Transform(in TransformInput) (TransformOutput, error) {
 		services[name] = svc
 	}
 
-	// Identify primary service (only required when domains are configured).
-	if len(in.Domains) > 0 {
+	// Three routing modes:
+	//   - AttachServices set: per-service multi-route. Each named
+	//     service gets platform_proxy + canonical labels; no primary
+	//     heuristic.
+	//   - AttachServices empty + Domains set: legacy single-domain.
+	//     Pick a primary heuristically (which honours an explicit
+	//     teal.primary opt-in label) and attach it.
+	//   - Both empty: no routing; just scrub labels.
+	if len(in.AttachServices) > 0 {
+		// Multi-route: strip user-supplied teal.* labels first so the
+		// engine's canonical ones don't conflict with stale user values.
+		for name, svc := range services {
+			stripTealLabels(svc)
+			services[name] = svc
+		}
+		for _, svcName := range in.AttachServices {
+			svc, ok := services[svcName]
+			if !ok {
+				return TransformOutput{}, fmt.Errorf("compose: routed service %q not declared in compose", svcName)
+			}
+			attachPlatformNetwork(svc)
+			setTealLabels(svc, in.AppSlug, in.Color)
+			services[svcName] = svc
+		}
+		out.PrimaryService = in.AttachServices[0]
+		declareExternalPlatformNetwork(doc.root)
+	} else if len(in.Domains) > 0 {
+		// Legacy: pickPrimary needs to see user teal.primary labels, so
+		// we strip teal.* labels AFTER picking, not before.
 		primary, port, err := pickPrimary(services)
 		if err != nil {
 			return TransformOutput{}, err
@@ -115,8 +149,6 @@ func Transform(in TransformInput) (TransformOutput, error) {
 		out.PrimaryService = primary
 		out.PortInContainer = port
 
-		// Now strip user-supplied teal.* labels and write the canonical
-		// ones onto the chosen primary.
 		for name, svc := range services {
 			stripTealLabels(svc)
 			services[name] = svc
@@ -128,7 +160,6 @@ func Transform(in TransformInput) (TransformOutput, error) {
 
 		declareExternalPlatformNetwork(doc.root)
 	} else {
-		// No routing: still scrub any user-supplied teal.* labels.
 		for name, svc := range services {
 			stripTealLabels(svc)
 			services[name] = svc

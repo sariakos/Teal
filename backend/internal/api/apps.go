@@ -161,6 +161,11 @@ type createAppRequest struct {
 	GitCredential  string `json:"gitCredential"`   // PEM (SSH) or raw PAT
 	GitBranch      string `json:"gitBranch"`
 	GitComposePath string `json:"gitComposePath"`
+
+	// Routes — per-service routing. When omitted/empty the legacy
+	// Domains-to-primary path applies. See UpdateAppRequest for the
+	// patch-side shape.
+	Routes []domain.Route `json:"routes"`
 }
 
 func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +207,7 @@ func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
 		GitAuthKind:    gitKind,
 		GitBranch:      strings.TrimSpace(req.GitBranch),
 		GitComposePath: gitComposePath,
+		Routes:         normalizeRoutes(req.Routes),
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
@@ -300,6 +306,11 @@ type updateAppRequest struct {
 	// admin can clear or fix-up the linkage manually if needed.
 	GitHubAppInstallationID *int64  `json:"githubAppInstallationId"`
 	GitHubAppRepo           *string `json:"githubAppRepo"`
+
+	// Routes replaces the per-app routing config wholesale when
+	// non-nil. nil leaves it untouched; an empty slice clears it
+	// (which falls back to the legacy Domains-to-primary path).
+	Routes *[]domain.Route `json:"routes"`
 }
 
 func (h *appsHandler) update(w http.ResponseWriter, r *http.Request) {
@@ -378,6 +389,9 @@ func (h *appsHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.GitHubAppRepo != nil {
 		app.GitHubAppRepo = strings.TrimSpace(*req.GitHubAppRepo)
+	}
+	if req.Routes != nil {
+		app.Routes = normalizeRoutes(*req.Routes)
 	}
 
 	// Git-auth handling. The tricky case is SSH with no user-provided

@@ -115,6 +115,12 @@ type App struct {
 	// to this app.
 	GitHubAppRepo string
 
+	// Routes is the per-service routing config — one entry per
+	// Traefik router we should write. Replaces the all-domains-go-to-
+	// the-primary-service behaviour of `Domains`. When empty, the
+	// engine falls back to Domains for backwards compatibility.
+	Routes []Route
+
 	Status AppStatus
 
 	CreatedAt time.Time
@@ -139,4 +145,21 @@ func (a App) EffectiveGitBranch() string {
 		return a.GitBranch
 	}
 	return a.AutoDeployBranch
+}
+
+// Route is one Traefik router config for an App: a single domain
+// pointed at a specific service in the compose. The engine writes
+// one router (HTTP + HTTPS when TLS is enabled) per Route.
+//
+// All fields except Domain are optional:
+//   - Service: when empty, the engine picks the "primary" service via
+//     heuristics (first with ports:, or labelled teal.primary). Use
+//     this when you don't care or have one service.
+//   - Port: when 0, the engine probes the container for a listening
+//     HTTP port (see deploy.CommonHTTPPorts). Override only when the
+//     probe gets the wrong port.
+type Route struct {
+	Service string `json:"service,omitempty"`
+	Domain  string `json:"domain"`
+	Port    int    `json:"port,omitempty"`
 }

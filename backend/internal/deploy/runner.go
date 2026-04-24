@@ -88,6 +88,26 @@ func (r *ComposeRunner) Build(ctx context.Context, opts ComposeOptions, logSink 
 	return r.run(ctx, logSink, args...)
 }
 
+// ContainerIDByService finds a container in the given compose project
+// by service name. Used by the multi-route flow to look up a specific
+// service's container without relying on Teal's own teal.role labels.
+// Returns empty string + nil error when no match.
+func (r *ComposeRunner) ContainerIDByService(ctx context.Context, project, service string) (string, error) {
+	cmd := exec.CommandContext(ctx, r.DockerBin, "ps", "--quiet",
+		"--filter", "label=com.docker.compose.project="+project,
+		"--filter", "label=com.docker.compose.service="+service,
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("runner: docker ps by service %q: %w", service, err)
+	}
+	id := strings.TrimSpace(string(out))
+	if i := strings.IndexByte(id, '\n'); i >= 0 {
+		id = id[:i]
+	}
+	return id, nil
+}
+
 // PrimaryContainerID returns the container ID of the service Teal labelled
 // as primary for this color. Looks up via Docker labels (teal.app + teal.color).
 // Returns empty string with nil error if no matching container found.

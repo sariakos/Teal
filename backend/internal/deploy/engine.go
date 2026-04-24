@@ -391,6 +391,13 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 	// Domains may be empty (background-only app); compose handles that.
 	domains := splitDomains(app.Domains)
 
+	// Resolve effective routes. Per-service routes (app.Routes) take
+	// precedence; if empty, fall back to the legacy single-domain
+	// model where all Domains route to the heuristically-picked
+	// primary service.
+	routes := effectiveRoutes(app, domains)
+	attachServices := uniqueServiceNames(routes)
+
 	// EnvFilePath: when project-dir is the checkout (git case), a
 	// relative "deploy.env" would resolve to <checkout>/deploy.env
 	// which is inside the user's repo — wrong. Use the absolute path
@@ -402,13 +409,14 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 	}
 
 	tx, err := compose.Transform(compose.TransformInput{
-		UserYAML:    composeYAML,
-		AppSlug:     app.Slug,
-		Color:       dep.Color,
-		Domains:     domains,
-		EnvFilePath: envFilePath,
-		CPULimit:    app.CPULimit,
-		MemoryLimit: app.MemoryLimit,
+		UserYAML:       composeYAML,
+		AppSlug:        app.Slug,
+		Color:          dep.Color,
+		Domains:        domains,
+		EnvFilePath:    envFilePath,
+		CPULimit:       app.CPULimit,
+		MemoryLimit:    app.MemoryLimit,
+		AttachServices: attachServices,
 	})
 	if err != nil {
 		e.fail(ctx, app, dep, "transform: "+err.Error())
@@ -499,47 +507,24 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		}
 	}
 
-	// Flip Traefik. Only if the App has domains AND we have a primary
-	// container with a known IP.
-	if tx.PrimaryService != "" && len(domains) > 0 && primaryContainerID != "" {
-		insp, err := e.docker.ContainerInspect(ctx, primaryContainerID)
-		if err != nil {
-			e.fail(ctx, app, dep, "inspect primary: "+err.Error())
-			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
-			return
-		}
-		ip := insp.NetworkIPs[traefik.PlatformNetworkName]
-		if ip == "" {
-			e.fail(ctx, app, dep, fmt.Sprintf("primary container has no IP on %s; check that the service is attached to the platform network", traefik.PlatformNetworkName))
-			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
-			return
-		}
-		// Auto-detect the service's listening port. The compose's
-		// ports: hint (PortInContainer) is a starting point; if it's
-		// missing or doesn't actually answer, probe a curated list of
-		// common HTTP ports. Removes the need for any compose
-		// modification or label for the 95% case.
-		port, err := detectPort(ctx, ip, tx.PortInContainer, func(format string, a ...any) {
-			fmt.Fprintf(logFile, format, a...)
-		})
-		if err != nil {
-			e.fail(ctx, app, dep, "port detection: "+err.Error())
-			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
-			return
-		}
+	// Flip Traefik. Build one Traefik route per effective Route, find
+	// each route's container, probe its port, write a single multi-
+	// router dynconf file. For legacy single-domain apps (Routes empty
+	// + Domains set), routes contains exactly one entry with the
+	// primary service implied — same shape as before.
+	if len(routes) > 0 && primaryContainerID != "" {
 		e.setPhase(dep.ID, PhaseFlipTraffic)
 		tlsEnabled, redirect, err := e.tlsFlagsFor(ctx)
 		if err != nil {
 			fmt.Fprintf(logFile, "[warn] read tls settings: %v (defaulting to HTTP-only)\n", err)
 		}
-		spec := traefik.RouterSpec{
-			Slug:          app.Slug,
-			Domains:       domains,
-			BackendURL:    fmt.Sprintf("http://%s:%d", ip, port),
-			TLSEnabled:    tlsEnabled,
-			HTTPSRedirect: redirect,
+		multi, err := e.buildMultiSpec(ctx, app, dep, routes, tx.PrimaryService, tlsEnabled, redirect, project, logFile)
+		if err != nil {
+			e.fail(ctx, app, dep, "build routes: "+err.Error())
+			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
+			return
 		}
-		if err := traefik.Write(e.cfg.TraefikDynamicDir, spec); err != nil {
+		if err := traefik.WriteMulti(e.cfg.TraefikDynamicDir, multi); err != nil {
 			e.fail(ctx, app, dep, "traefik write: "+err.Error())
 			_ = e.runner.Down(context.Background(), composeOpts, io.Discard)
 			return

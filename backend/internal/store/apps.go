@@ -3,12 +3,42 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/sariakos/teal/backend/internal/domain"
 )
+
+// marshalRoutes encodes a Route slice as the JSON we store. nil and
+// empty slices both marshal as "[]" so the column never has NULL.
+func marshalRoutes(rs []domain.Route) string {
+	if len(rs) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(rs)
+	if err != nil {
+		// JSON encode of a plain struct slice can't realistically fail;
+		// log shape isn't worth it.
+		return "[]"
+	}
+	return string(b)
+}
+
+// unmarshalRoutes decodes the JSON column into a Route slice. Empty
+// or invalid JSON yields nil — callers treat that as "no routes
+// configured, fall back to legacy domains field".
+func unmarshalRoutes(s string) []domain.Route {
+	if s == "" {
+		return nil
+	}
+	var out []domain.Route
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil
+	}
+	return out
+}
 
 // AppRepo persists domain.App. Methods accept a context for cancellation and
 // translate driver errors into store sentinels (ErrNotFound) where useful.
@@ -39,8 +69,9 @@ func (r *AppRepo) Create(ctx context.Context, a domain.App) (domain.App, error) 
 		                  cpu_limit, memory_limit,
 		                  notification_webhook_url, notification_webhook_secret_encrypted, notification_email,
 		                  github_app_installation_id, github_app_repo,
+		                  routes,
 		                  created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.Slug, a.Name, a.ComposeFile, a.AutoDeployBranch, boolToInt(a.AutoDeployEnabled),
 		a.Domains, string(a.ActiveColor), boolToInt(a.QueueDeploys),
 		string(a.Status),
@@ -50,6 +81,7 @@ func (r *AppRepo) Create(ctx context.Context, a domain.App) (domain.App, error) 
 		a.CPULimit, a.MemoryLimit,
 		a.NotificationWebhookURL, notNilBytes(a.NotificationWebhookSecretEncrypted), a.NotificationEmail,
 		a.GitHubAppInstallationID, a.GitHubAppRepo,
+		marshalRoutes(a.Routes),
 		formatTime(a.CreatedAt), formatTime(a.UpdatedAt),
 	)
 	if err != nil {
@@ -116,6 +148,7 @@ func (r *AppRepo) Update(ctx context.Context, a domain.App) error {
 		                cpu_limit = ?, memory_limit = ?,
 		                notification_webhook_url = ?, notification_webhook_secret_encrypted = ?, notification_email = ?,
 		                github_app_installation_id = ?, github_app_repo = ?,
+		                routes = ?,
 		                updated_at = ?
 		WHERE id = ?`,
 		a.Name, a.ComposeFile, a.AutoDeployBranch, boolToInt(a.AutoDeployEnabled),
@@ -127,6 +160,7 @@ func (r *AppRepo) Update(ctx context.Context, a domain.App) error {
 		a.CPULimit, a.MemoryLimit,
 		a.NotificationWebhookURL, notNilBytes(a.NotificationWebhookSecretEncrypted), a.NotificationEmail,
 		a.GitHubAppInstallationID, a.GitHubAppRepo,
+		marshalRoutes(a.Routes),
 		formatTime(a.UpdatedAt), a.ID,
 	)
 	if err != nil {
@@ -220,6 +254,7 @@ const appColumns = `id, slug, name, compose_file, auto_deploy_branch, auto_deplo
 	cpu_limit, memory_limit,
 	notification_webhook_url, notification_webhook_secret_encrypted, notification_email,
 	github_app_installation_id, github_app_repo,
+	routes,
 	created_at, updated_at`
 
 // scanner is the minimal interface implemented by both *sql.Row and *sql.Rows
@@ -235,6 +270,7 @@ func scanApp(s scanner) (domain.App, error) {
 		statusStr, activeColor, authKind string
 		createdAt, updated               string
 	)
+	var routesJSON string
 	err := s.Scan(&a.ID, &a.Slug, &a.Name, &a.ComposeFile, &a.AutoDeployBranch,
 		&autoEnabled, &a.Domains, &activeColor, &queueDep, &statusStr,
 		&a.GitURL, &authKind, &a.GitAuthCredentialEncrypted,
@@ -243,6 +279,7 @@ func scanApp(s scanner) (domain.App, error) {
 		&a.CPULimit, &a.MemoryLimit,
 		&a.NotificationWebhookURL, &a.NotificationWebhookSecretEncrypted, &a.NotificationEmail,
 		&a.GitHubAppInstallationID, &a.GitHubAppRepo,
+		&routesJSON,
 		&createdAt, &updated)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -255,6 +292,7 @@ func scanApp(s scanner) (domain.App, error) {
 	a.ActiveColor = domain.Color(activeColor)
 	a.GitAuthKind = domain.GitAuthKind(authKind)
 	a.Status = domain.AppStatus(statusStr)
+	a.Routes = unmarshalRoutes(routesJSON)
 	if a.CreatedAt, err = parseTime(createdAt); err != nil {
 		return domain.App{}, err
 	}

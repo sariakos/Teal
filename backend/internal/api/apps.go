@@ -677,14 +677,45 @@ func splitDomainsField(s string) []string {
 }
 
 // joinDomains turns a slice from the wire into the stored comma-separated
-// form. Empty/blank entries are dropped.
+// form. Empty/blank entries are dropped, and each entry is normalised to
+// a bare hostname so a paste of "https://example.com/" doesn't end up
+// embedded verbatim in a Traefik Host(`...`) rule (which silently
+// matches nothing).
 func joinDomains(in []string) string {
 	out := make([]string, 0, len(in))
 	for _, p := range in {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+		if d := normalizeDomain(p); d != "" {
+			out = append(out, d)
 		}
 	}
 	return strings.Join(out, ",")
+}
+
+// normalizeDomain strips schemes, paths, ports, and surrounding
+// whitespace so the stored value is just a hostname suitable for a
+// Traefik Host() matcher. DNS is case-insensitive — lowercasing also
+// avoids "FOO.example.com" vs "foo.example.com" matching surprises.
+func normalizeDomain(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// Strip scheme.
+	for _, prefix := range []string{"https://", "http://", "//"} {
+		if strings.HasPrefix(strings.ToLower(s), prefix) {
+			s = s[len(prefix):]
+			break
+		}
+	}
+	// Strip path / query / fragment.
+	for _, sep := range []byte{'/', '?', '#'} {
+		if i := strings.IndexByte(s, sep); i >= 0 {
+			s = s[:i]
+		}
+	}
+	// Strip port (Traefik's Host matcher doesn't accept one anyway).
+	if i := strings.IndexByte(s, ':'); i >= 0 {
+		s = s[:i]
+	}
+	return strings.ToLower(strings.TrimSpace(s))
 }

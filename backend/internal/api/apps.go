@@ -55,6 +55,10 @@ type appDetailResponse struct {
 	NotificationWebhookURL    string `json:"notificationWebhookUrl,omitempty"`
 	HasNotificationSecret     bool   `json:"hasNotificationSecret"`
 	NotificationEmail         string `json:"notificationEmail,omitempty"`
+
+	// GitHub App linkage. InstallationID == 0 means not yet installed.
+	GitHubAppInstallationID int64  `json:"githubAppInstallationId,omitempty"`
+	GitHubAppRepo           string `json:"githubAppRepo,omitempty"`
 }
 
 // appInitSecretsResponse extends appDetailResponse with ONE-SHOT secrets
@@ -99,6 +103,8 @@ func appToDetail(a domain.App) appDetailResponse {
 		NotificationWebhookURL:    a.NotificationWebhookURL,
 		HasNotificationSecret:     len(a.NotificationWebhookSecretEncrypted) > 0,
 		NotificationEmail:         a.NotificationEmail,
+		GitHubAppInstallationID:   a.GitHubAppInstallationID,
+		GitHubAppRepo:             a.GitHubAppRepo,
 	}
 }
 
@@ -284,6 +290,12 @@ type updateAppRequest struct {
 	MemoryLimit            *string `json:"memoryLimit"`
 	NotificationWebhookURL *string `json:"notificationWebhookUrl"`
 	NotificationEmail      *string `json:"notificationEmail"`
+
+	// GitHub App: linking to an installation lives in the install flow
+	// (POST /apps/{slug}/install-github-app); these fields exist so an
+	// admin can clear or fix-up the linkage manually if needed.
+	GitHubAppInstallationID *int64  `json:"githubAppInstallationId"`
+	GitHubAppRepo           *string `json:"githubAppRepo"`
 }
 
 func (h *appsHandler) update(w http.ResponseWriter, r *http.Request) {
@@ -356,6 +368,12 @@ func (h *appsHandler) update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.NotificationEmail != nil {
 		app.NotificationEmail = strings.TrimSpace(*req.NotificationEmail)
+	}
+	if req.GitHubAppInstallationID != nil {
+		app.GitHubAppInstallationID = *req.GitHubAppInstallationID
+	}
+	if req.GitHubAppRepo != nil {
+		app.GitHubAppRepo = strings.TrimSpace(*req.GitHubAppRepo)
 	}
 
 	// Git-auth handling. The tricky case is SSH with no user-provided
@@ -481,10 +499,10 @@ func (h *appsHandler) newWebhookSecret(appID int64) (raw string, encrypted []byt
 
 func validateGitAuthKind(k domain.GitAuthKind) error {
 	switch k {
-	case domain.GitAuthNone, domain.GitAuthSSH, domain.GitAuthPAT:
+	case domain.GitAuthNone, domain.GitAuthSSH, domain.GitAuthPAT, domain.GitAuthGitHubApp:
 		return nil
 	default:
-		return errors.New("gitAuthKind must be one of '', 'ssh', 'pat'")
+		return errors.New("gitAuthKind must be one of '', 'ssh', 'pat', 'github_app'")
 	}
 }
 

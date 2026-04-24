@@ -145,7 +145,13 @@ func isAllowedSettingKey(key string) bool {
 		"smtp.user",
 		"smtp.pass",
 		"smtp.from",
-		"smtp.starttls":
+		"smtp.starttls",
+		// GitHub App identity. The two secret keys (private_key_b64 and
+		// webhook_secret_b64) are written via a dedicated handler that
+		// encrypts before persisting — they can't be set through the
+		// generic /settings/{key} surface.
+		"github_app.app_id",
+		"github_app.app_slug":
 		return true
 	}
 	return false

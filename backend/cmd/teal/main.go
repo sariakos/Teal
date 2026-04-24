@@ -35,6 +35,7 @@ import (
 	"github.com/sariakos/teal/backend/internal/crypto"
 	"github.com/sariakos/teal/backend/internal/deploy"
 	"github.com/sariakos/teal/backend/internal/docker"
+	"github.com/sariakos/teal/backend/internal/githubapp"
 	"github.com/sariakos/teal/backend/internal/logbuffer"
 	"github.com/sariakos/teal/backend/internal/logging"
 	"github.com/sariakos/teal/backend/internal/metrics"
@@ -131,6 +132,12 @@ func run() error {
 
 	notifier := notify.New(logger, st, codec, hub)
 	engine.SetNotifier(notifyAdapter{inner: notifier})
+
+	// GitHub App installation-token cache. Process-local — restart
+	// wipes it (a few extra mints, no security concern). Shared with
+	// the API in commit 2 (install-flow callback).
+	ghAppTokens := githubapp.NewTokenCache(nil)
+	engine.SetGitHubAppTokenCache(ghAppTokens)
 
 	watcher := containerwatcher.New(logger, dock, 0) // default 2s
 	scraper := metrics.New(logger, dock, st.Metrics, hub, metrics.Config{

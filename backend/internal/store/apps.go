@@ -38,8 +38,9 @@ func (r *AppRepo) Create(ctx context.Context, a domain.App) (domain.App, error) 
 		                  last_deployed_commit_sha,
 		                  cpu_limit, memory_limit,
 		                  notification_webhook_url, notification_webhook_secret_encrypted, notification_email,
+		                  github_app_installation_id, github_app_repo,
 		                  created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.Slug, a.Name, a.ComposeFile, a.AutoDeployBranch, boolToInt(a.AutoDeployEnabled),
 		a.Domains, string(a.ActiveColor), boolToInt(a.QueueDeploys),
 		string(a.Status),
@@ -48,6 +49,7 @@ func (r *AppRepo) Create(ctx context.Context, a domain.App) (domain.App, error) 
 		a.LastDeployedCommitSHA,
 		a.CPULimit, a.MemoryLimit,
 		a.NotificationWebhookURL, notNilBytes(a.NotificationWebhookSecretEncrypted), a.NotificationEmail,
+		a.GitHubAppInstallationID, a.GitHubAppRepo,
 		formatTime(a.CreatedAt), formatTime(a.UpdatedAt),
 	)
 	if err != nil {
@@ -113,6 +115,7 @@ func (r *AppRepo) Update(ctx context.Context, a domain.App) error {
 		                last_deployed_commit_sha = ?,
 		                cpu_limit = ?, memory_limit = ?,
 		                notification_webhook_url = ?, notification_webhook_secret_encrypted = ?, notification_email = ?,
+		                github_app_installation_id = ?, github_app_repo = ?,
 		                updated_at = ?
 		WHERE id = ?`,
 		a.Name, a.ComposeFile, a.AutoDeployBranch, boolToInt(a.AutoDeployEnabled),
@@ -123,6 +126,7 @@ func (r *AppRepo) Update(ctx context.Context, a domain.App) error {
 		a.LastDeployedCommitSHA,
 		a.CPULimit, a.MemoryLimit,
 		a.NotificationWebhookURL, notNilBytes(a.NotificationWebhookSecretEncrypted), a.NotificationEmail,
+		a.GitHubAppInstallationID, a.GitHubAppRepo,
 		formatTime(a.UpdatedAt), a.ID,
 	)
 	if err != nil {
@@ -215,6 +219,7 @@ const appColumns = `id, slug, name, compose_file, auto_deploy_branch, auto_deplo
 	webhook_secret_encrypted, last_deployed_commit_sha,
 	cpu_limit, memory_limit,
 	notification_webhook_url, notification_webhook_secret_encrypted, notification_email,
+	github_app_installation_id, github_app_repo,
 	created_at, updated_at`
 
 // scanner is the minimal interface implemented by both *sql.Row and *sql.Rows
@@ -237,6 +242,7 @@ func scanApp(s scanner) (domain.App, error) {
 		&a.LastDeployedCommitSHA,
 		&a.CPULimit, &a.MemoryLimit,
 		&a.NotificationWebhookURL, &a.NotificationWebhookSecretEncrypted, &a.NotificationEmail,
+		&a.GitHubAppInstallationID, &a.GitHubAppRepo,
 		&createdAt, &updated)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

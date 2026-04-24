@@ -18,6 +18,7 @@ import (
 	"github.com/sariakos/teal/backend/internal/docker"
 	"github.com/sariakos/teal/backend/internal/domain"
 	"github.com/sariakos/teal/backend/internal/git"
+	"github.com/sariakos/teal/backend/internal/githubapp"
 	"github.com/sariakos/teal/backend/internal/store"
 	"github.com/sariakos/teal/backend/internal/traefik"
 )
@@ -110,8 +111,9 @@ type Engine struct {
 	lock   *Lock
 	cfg    EngineConfig
 	codec  *crypto.Codec // shared with API; derives per-purpose keys
-	pub    Publisher     // optional realtime fanout; nil disables
-	notify Notifier      // optional outbound notifier; nil disables
+	pub        Publisher              // optional realtime fanout; nil disables
+	notify     Notifier               // optional outbound notifier; nil disables
+	githubApps *githubapp.TokenCache // optional GitHub App token cache; nil disables github_app auth
 
 	mu     sync.Mutex
 	phases map[int64]Phase // deployment ID -> last Phase observed
@@ -218,6 +220,16 @@ func (e *Engine) SetNotifier(n Notifier) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.notify = n
+}
+
+// SetGitHubAppTokenCache attaches the GitHub App installation-token
+// cache. Required to deploy apps using GitAuthGitHubApp; absent it,
+// resolveGitAuth returns a clear "not configured" error rather than
+// silently failing the clone.
+func (e *Engine) SetGitHubAppTokenCache(c *githubapp.TokenCache) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.githubApps = c
 }
 
 // CurrentPhase returns the most recent in-memory phase for a deployment,
@@ -329,7 +341,7 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 	projectDir := ""
 	if app.GitURL != "" {
 		fmt.Fprintf(logFile, "[info] cloning %s @ %s\n", redactGitURL(app.GitURL), app.EffectiveGitBranch())
-		auth, err := e.resolveGitAuth(app)
+		auth, err := e.resolveGitAuth(ctx, app)
 		if err != nil {
 			e.fail(ctx, app, dep, "git auth: "+err.Error())
 			return
@@ -719,7 +731,10 @@ func (e *Engine) tlsFlagsFor(ctx context.Context) (tlsEnabled, redirect bool, er
 
 // resolveGitAuth decrypts the App's git credential and returns it as a
 // git.Auth. AuthNone is used when GitAuthKind is empty (public repo).
-func (e *Engine) resolveGitAuth(app domain.App) (git.Auth, error) {
+// GitAuthGitHubApp short-lives an installation token via the platform
+// GitHub App and hands it to the existing PAT path — git already
+// handles `https://x-access-token:<token>@github.com/...` rewrites.
+func (e *Engine) resolveGitAuth(ctx context.Context, app domain.App) (git.Auth, error) {
 	switch app.GitAuthKind {
 	case domain.GitAuthNone:
 		return git.Auth{Kind: git.AuthNone}, nil
@@ -741,6 +756,25 @@ func (e *Engine) resolveGitAuth(app domain.App) (git.Auth, error) {
 			return git.Auth{}, fmt.Errorf("decrypt pat: %w", err)
 		}
 		return git.Auth{Kind: git.AuthPAT, Credential: tok}, nil
+	case domain.GitAuthGitHubApp:
+		if e.githubApps == nil {
+			return git.Auth{}, errors.New("github app auth selected but token cache not wired (cmd/teal didn't call SetGitHubAppTokenCache)")
+		}
+		if app.GitHubAppInstallationID == 0 {
+			return git.Auth{}, errors.New("github app auth selected but no installation linked (open the app's Settings tab and click Install)")
+		}
+		cfg, err := githubapp.LoadConfig(ctx, e.store, e.codec)
+		if err != nil {
+			return git.Auth{}, fmt.Errorf("load github app config: %w", err)
+		}
+		if !cfg.Configured() {
+			return git.Auth{}, errors.New("github app auth selected but the platform GitHub App is not configured (admin: /settings/github-app)")
+		}
+		tok, err := e.githubApps.Get(ctx, cfg, app.GitHubAppInstallationID)
+		if err != nil {
+			return git.Auth{}, fmt.Errorf("mint installation token: %w", err)
+		}
+		return git.Auth{Kind: git.AuthPAT, Credential: []byte(tok.Token)}, nil
 	default:
 		return git.Auth{}, fmt.Errorf("unknown git auth kind %q", app.GitAuthKind)
 	}

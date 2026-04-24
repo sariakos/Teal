@@ -105,6 +105,16 @@ type App struct {
 	// Requires platform-wide SMTP configured. Empty disables.
 	NotificationEmail string
 
+	// GitHubAppInstallationID identifies which install of the platform-
+	// wide GitHub App can clone this app's repo. 0 when none. Only
+	// meaningful when GitAuthKind == "github_app".
+	GitHubAppInstallationID int64
+
+	// GitHubAppRepo is the "owner/repo" full name picked at install
+	// time. Used by the centralized webhook to route push events back
+	// to this app.
+	GitHubAppRepo string
+
 	Status AppStatus
 
 	CreatedAt time.Time
@@ -115,9 +125,10 @@ type App struct {
 type GitAuthKind string
 
 const (
-	GitAuthNone GitAuthKind = ""
-	GitAuthSSH  GitAuthKind = "ssh"
-	GitAuthPAT  GitAuthKind = "pat"
+	GitAuthNone      GitAuthKind = ""
+	GitAuthSSH       GitAuthKind = "ssh"
+	GitAuthPAT       GitAuthKind = "pat"
+	GitAuthGitHubApp GitAuthKind = "github_app"
 )
 
 // EffectiveGitBranch returns the branch the engine should clone / the

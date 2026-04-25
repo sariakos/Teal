@@ -264,13 +264,21 @@ func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
 			app.GitAuthCredentialEncrypted = enc
 		}
 
-		raw, encSec, err := h.newWebhookSecret(app.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "generate webhook secret")
-			return
+		// Per-app webhook secret is only meaningful for the legacy
+		// inbound webhook flow (one webhook URL per app, registered on
+		// GitHub by the user). GitHub App auth routes pushes through
+		// the platform-wide webhook configured on the App itself, so
+		// generating + revealing a per-app secret would be useless
+		// noise the user has to "copy now or lose forever".
+		if gitKind != domain.GitAuthGitHubApp {
+			raw, encSec, err := h.newWebhookSecret(app.ID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "generate webhook secret")
+				return
+			}
+			app.WebhookSecretEncrypted = encSec
+			init.NewWebhookSecret = raw
 		}
-		app.WebhookSecretEncrypted = encSec
-		init.NewWebhookSecret = raw
 
 		if err := h.store.Apps.Update(r.Context(), app); err != nil {
 			writeError(w, http.StatusInternalServerError, "persist git config: "+err.Error())
@@ -451,8 +459,11 @@ func (h *appsHandler) update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Generate a webhook secret the first time a git source is configured.
-	if app.GitURL != "" && len(app.WebhookSecretEncrypted) == 0 {
+	// Generate a per-app webhook secret the first time a git source
+	// is configured — but only when auth is NOT GitHub App. GitHub
+	// App apps share the platform-wide webhook configured on the App
+	// itself; minting a per-app secret here would never be used.
+	if app.GitURL != "" && app.GitAuthKind != domain.GitAuthGitHubApp && len(app.WebhookSecretEncrypted) == 0 {
 		raw, enc, err := h.newWebhookSecret(app.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "generate webhook secret")

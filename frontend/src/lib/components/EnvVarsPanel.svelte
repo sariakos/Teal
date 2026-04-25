@@ -12,6 +12,9 @@
 	import Button from './Button.svelte';
 	import Card from './Card.svelte';
 	import Input from './Input.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
+	import { dirty } from '$lib/stores/dirty.svelte';
 
 	let { slug }: { slug: string } = $props();
 
@@ -87,8 +90,12 @@
 			delete inlineValues[name];
 			inlineValues = { ...inlineValues };
 			await Promise.all([reload(revealed), reloadRequired()]);
+			dirty.mark(slug);
+			toast.success(`${name} set`, { description: 'Redeploy to apply.' });
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Save failed');
+			toast.error('Save failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			inlineSavingKey = null;
 		}
@@ -115,11 +122,17 @@
 		formError = null;
 		try {
 			await appEnvVarsApi.upsert(slug, newKey, newValue);
+			const k = newKey;
 			newKey = '';
 			newValue = '';
 			await reload(revealed);
+			dirty.mark(slug);
+			toast.success(`${k} saved`, { description: 'Redeploy to apply.' });
 		} catch (err) {
 			formError = err instanceof ApiError ? err.message : 'Save failed';
+			toast.error('Save failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			saving = false;
 		}
@@ -225,9 +238,12 @@
 			return;
 		}
 		if (deletes.length > 0) {
-			const ok = confirm(
-				`Removing ${deletes.length} key(s): ${deletes.join(', ')}. Continue?`
-			);
+			const ok = await dialog.confirm({
+				title: `Remove ${deletes.length} variable${deletes.length === 1 ? '' : 's'}?`,
+				body: deletes.join(', '),
+				tone: 'warning',
+				confirmLabel: 'Remove'
+			});
 			if (!ok) return;
 		}
 
@@ -241,20 +257,42 @@
 			}
 			await Promise.all([reload(revealed), reloadRequired()]);
 			editorDraft = rowsToDraft();
+			dirty.mark(slug);
+			const verb =
+				upserts.length && deletes.length
+					? `${upserts.length} saved, ${deletes.length} removed`
+					: upserts.length
+						? `${upserts.length} saved`
+						: `${deletes.length} removed`;
+			toast.success(verb, { description: 'Redeploy to apply.' });
 		} catch (err) {
 			editorError = err instanceof ApiError ? err.message : 'Save failed';
+			toast.error('Save failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			editorSaving = false;
 		}
 	}
 
 	async function deleteEnvVar(key: string) {
-		if (!confirm(`Delete env var "${key}"?`)) return;
+		if (
+			!(await dialog.confirm({
+				title: `Delete ${key}?`,
+				tone: 'danger',
+				confirmLabel: 'Delete'
+			}))
+		)
+			return;
 		try {
 			await appEnvVarsApi.remove(slug, key);
 			await reload(revealed);
+			dirty.mark(slug);
+			toast.success(`${key} deleted`, { description: 'Redeploy to apply.' });
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Delete failed');
+			toast.error('Delete failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 
@@ -271,8 +309,12 @@
 		try {
 			await appSharedEnvVarsApi.set(slug, keys);
 			await reloadShared();
+			dirty.mark(slug);
 		} catch (err) {
 			sharedError = err instanceof ApiError ? err.message : 'Save failed';
+			toast.error('Save failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			savingShared = false;
 		}

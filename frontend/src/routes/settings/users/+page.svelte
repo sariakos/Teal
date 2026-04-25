@@ -7,6 +7,8 @@
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
 
 	let users = $state<User[]>([]);
 	let loading = $state(true);
@@ -37,10 +39,12 @@
 		submitting = true;
 		try {
 			await usersApi.create({ email: formEmail, password: formPassword, role: formRole });
+			const e = formEmail;
 			formEmail = '';
 			formPassword = '';
 			formRole = 'viewer';
 			await reload();
+			toast.success(`Invited ${e}`);
 		} catch (err) {
 			formError = err instanceof ApiError ? err.message : 'Create failed';
 		} finally {
@@ -50,12 +54,22 @@
 
 	async function handleDelete(user: User) {
 		if (auth.user?.id === user.id) return; // backend also rejects this
-		if (!confirm(`Delete ${user.email}? This cannot be undone.`)) return;
+		if (
+			!(await dialog.confirm({
+				title: `Delete ${user.email}?`,
+				body: 'They will lose access immediately. Active sessions are revoked on next request.',
+				tone: 'danger'
+			}))
+		)
+			return;
 		try {
 			await usersApi.delete(user.id);
 			await reload();
+			toast.success(`Deleted ${user.email}`);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Delete failed');
+			toast.error('Delete failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 
@@ -63,8 +77,11 @@
 		try {
 			await usersApi.update(user.id, { role });
 			await reload();
+			toast.success(`${user.email} is now ${role}`);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Update failed');
+			toast.error('Update failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 </script>

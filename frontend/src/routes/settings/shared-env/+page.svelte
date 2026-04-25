@@ -10,6 +10,8 @@
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
 
 	let rows = $state<EnvVarRow[]>([]);
 	let loading = $state(true);
@@ -40,9 +42,11 @@
 		formError = null;
 		try {
 			await sharedEnvVarsApi.upsert(newKey, newValue);
+			const k = newKey;
 			newKey = '';
 			newValue = '';
 			await reload(revealed);
+			toast.success(`${k} saved`);
 		} catch (err) {
 			formError = err instanceof ApiError ? err.message : 'Save failed';
 		} finally {
@@ -51,12 +55,22 @@
 	}
 
 	async function remove(key: string) {
-		if (!confirm(`Delete shared env "${key}"? Apps that opted in will no longer receive it.`)) return;
+		if (
+			!(await dialog.confirm({
+				title: `Delete shared env "${key}"?`,
+				body: 'Apps that opted in will stop receiving this variable on the next deploy.',
+				tone: 'danger'
+			}))
+		)
+			return;
 		try {
 			await sharedEnvVarsApi.remove(key);
 			await reload(revealed);
+			toast.success(`Deleted ${key}`);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Delete failed');
+			toast.error('Delete failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 

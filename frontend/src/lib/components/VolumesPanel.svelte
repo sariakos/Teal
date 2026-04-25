@@ -13,6 +13,8 @@
 	import type { DockerVolume } from '$lib/api/types';
 	import Button from './Button.svelte';
 	import Card from './Card.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
 
 	let { appSlug }: { appSlug?: string } = $props();
 
@@ -33,19 +35,30 @@
 	}
 
 	async function deleteVolume(name: string) {
-		const typed = prompt(
-			`Type the volume name "${name}" to confirm permanent deletion. Data will be lost.`
-		);
+		const typed = await dialog.prompt({
+			title: 'Delete this volume?',
+			body: 'All data inside the volume is destroyed. This is the right move for one-off scratch volumes; think twice for databases.',
+			tone: 'danger',
+			expect: name,
+			placeholder: name,
+			help: 'Type the volume name to confirm.',
+			confirmLabel: 'Delete volume'
+		});
 		if (typed !== name) return;
 		try {
 			await volumesApi.remove(name);
 			await reload();
+			toast.success(`Volume "${name}" deleted`);
 		} catch (err) {
 			if (err instanceof ApiError && err.status === 409) {
-				alert('Volume is in use by a running container. Stop the container first.');
+				toast.error('Volume is in use', {
+					description: 'Stop the container that mounts it first, then retry.'
+				});
 				return;
 			}
-			alert(err instanceof ApiError ? err.message : 'Delete failed');
+			toast.error('Delete failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 

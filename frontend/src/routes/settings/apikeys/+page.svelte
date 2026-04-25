@@ -6,6 +6,8 @@
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
 
 	let keys = $state<ApiKey[]>([]);
 	let loading = $state(true);
@@ -49,12 +51,23 @@
 	}
 
 	async function handleRevoke(key: ApiKey) {
-		if (!confirm(`Revoke "${key.name}"? Existing scripts using this key will stop working.`)) return;
+		if (
+			!(await dialog.confirm({
+				title: `Revoke "${key.name}"?`,
+				body: 'Any script or pipeline using this key will start receiving 401s on the next request.',
+				tone: 'danger',
+				confirmLabel: 'Revoke'
+			}))
+		)
+			return;
 		try {
 			await apiKeysApi.revoke(key.id);
 			await reload();
+			toast.success(`Revoked "${key.name}"`);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Revoke failed');
+			toast.error('Revoke failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 

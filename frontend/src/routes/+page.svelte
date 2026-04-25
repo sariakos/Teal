@@ -11,6 +11,7 @@
 	import type { App } from '$lib/api/types';
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import { dirty } from '$lib/stores/dirty.svelte';
 
 	let apps = $state<App[]>([]);
 	let summary = $state<PlatformSummary | null>(null);
@@ -187,9 +188,17 @@
 					{#each apps as app}
 						<tr class="border-t border-zinc-100">
 							<td class="py-2">
-								<a class="font-medium text-zinc-800 hover:text-teal-700" href={`/apps/${app.slug}`}>
-									{app.name}
-								</a>
+								<div class="flex items-center gap-2">
+									<a class="font-medium text-zinc-800 hover:text-teal-700" href={`/apps/${app.slug}`}>
+										{app.name}
+									</a>
+									{#if dirty.has(app.slug)}
+										<span
+											class="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]"
+											title="Configuration changed — redeploy to apply"
+										></span>
+									{/if}
+								</div>
 								<div class="text-xs text-zinc-400">{app.slug}</div>
 							</td>
 							<td class="py-2">

@@ -23,6 +23,9 @@
 	import LogStream from '$lib/components/LogStream.svelte';
 	import Sparkline from '$lib/components/Sparkline.svelte';
 	import { metricsApi, logsApi, type MetricSample } from '$lib/api/logs';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
+	import { dirty } from '$lib/stores/dirty.svelte';
 
 	const slug = $derived(page.params.slug as string);
 
@@ -68,6 +71,14 @@
 	let watchedPhase = $state<DeploymentPhase>('');
 	let watchedStatus = $state<string>('');
 	let pollHandle: ReturnType<typeof setInterval> | null = null;
+	let watchStartedAt = 0;
+
+	// Wall-clock cap on how long we keep polling. The backend should mark
+	// every deployment terminal eventually, but bugs and crashes can leave
+	// it hanging in 'running' — without this guard the UI gets stuck on
+	// "Deploying…" until the user reloads. 15 min covers even slow image
+	// builds; longer than that and the user should investigate manually.
+	const WATCH_TIMEOUT_MS = 15 * 60 * 1000;
 
 	async function loadApp() {
 		try {
@@ -86,11 +97,21 @@
 	}
 
 	function startWatching(id: number) {
+		stopWatching();
 		watchedID = id;
 		watchedPhase = 'pending';
 		watchedStatus = 'pending';
-		stopWatching();
+		watchStartedAt = Date.now();
 		pollHandle = setInterval(async () => {
+			if (Date.now() - watchStartedAt > WATCH_TIMEOUT_MS) {
+				stopWatching();
+				toast.warning('Stopped watching deploy', {
+					description:
+						'Deployment ran longer than expected. Check the Deployments tab for current status.'
+				});
+				await Promise.all([loadApp(), loadDeployments()]);
+				return;
+			}
 			try {
 				const dep = await deploymentsApi.get(id);
 				watchedPhase = dep.phase ?? '';
@@ -98,9 +119,22 @@
 				if (dep.status !== 'pending' && dep.status !== 'running') {
 					stopWatching();
 					await Promise.all([loadApp(), loadDeployments()]);
+					if (dep.status === 'succeeded') {
+						dirty.clear(slug);
+						toast.success(`Deploy #${id} succeeded`);
+					} else if (dep.status === 'failed') {
+						toast.error(`Deploy #${id} failed`, {
+							description: dep.failureReason || 'See deployment log for details.'
+						});
+					} else if (dep.status === 'canceled') {
+						toast.info(`Deploy #${id} canceled`);
+					}
 				}
-			} catch {
+			} catch (err) {
 				stopWatching();
+				toast.error('Lost connection while watching deploy', {
+					description: err instanceof Error ? err.message : undefined
+				});
 			}
 		}, 1000);
 	}
@@ -110,39 +144,71 @@
 			clearInterval(pollHandle);
 			pollHandle = null;
 		}
+		watchedID = null;
+		watchedPhase = '';
+		watchedStatus = '';
 	}
 
 	async function handleDeploy() {
 		try {
 			const dep = await appsApi.deploy(slug);
+			toast.info(`Deploy #${dep.id} started`);
 			await Promise.all([loadApp(), loadDeployments()]);
 			startWatching(dep.id);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Deploy failed');
+			toast.error('Deploy failed to start', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 
 	async function handleRollback() {
-		if (!confirm('Roll back to the previous successful deployment?')) return;
+		if (
+			!(await dialog.confirm({
+				title: 'Roll back to the previous deploy?',
+				body: 'Traffic will switch back to the previously running color. The current color stays around for a one-click roll-forward.',
+				confirmLabel: 'Roll back'
+			}))
+		)
+			return;
 		try {
 			const dep = await appsApi.rollback(slug);
+			toast.info(`Rollback #${dep.id} started`);
 			await Promise.all([loadApp(), loadDeployments()]);
 			startWatching(dep.id);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Rollback failed');
+			toast.error('Rollback failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 
 	async function handleDelete() {
 		if (!app) return;
-		const typed = prompt(`Type the slug "${app.slug}" to confirm permanent deletion.`);
+		const typed = await dialog.prompt({
+			title: 'Delete this app?',
+			body: 'Containers stop and the app config is removed. Volumes are kept — clean them up in the Volumes tab if you want them gone.',
+			tone: 'danger',
+			expect: app.slug,
+			placeholder: app.slug,
+			help: 'Type the slug to confirm.',
+			confirmLabel: 'Delete app'
+		});
 		if (typed !== app.slug) return;
 		try {
 			await appsApi.delete(slug);
+			toast.success(`App "${app.slug}" deleted`);
 			goto('/');
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Delete failed');
+			toast.error('Delete failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
+	}
+
+	function cancelWatching() {
+		stopWatching();
+		toast.info('Stopped watching — deploy continues in background.');
 	}
 
 	// ------- Settings tab state -------
@@ -273,8 +339,13 @@
 			app = resp;
 			seedRoutesFromApp(resp, services);
 			routesSaved = true;
+			dirty.mark(slug);
+			toast.success('Routes saved', { description: 'Redeploy to apply.' });
 		} catch (err) {
 			routesError = err instanceof ApiError ? err.message : 'Save failed';
+			toast.error('Saving routes failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			routesSaving = false;
 		}
@@ -314,8 +385,12 @@
 			});
 			app = resp;
 			await loadGitHubAppRepos();
+			dirty.mark(slug);
+			toast.success(`Linked to ${fullName}`);
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Link failed');
+			toast.error('Link failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			linkingRepo = false;
 		}
@@ -383,36 +458,61 @@
 			app = resp;
 			formGitCredential = '';
 			await loadExistingDeployKey();
+			dirty.mark(slug);
+			toast.success('Settings saved', { description: 'Redeploy to apply.' });
 		} catch (err) {
 			settingsError = err instanceof ApiError ? err.message : 'Save failed';
+			toast.error('Saving settings failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		} finally {
 			saving = false;
 		}
 	}
 
 	async function rotateDeployKey() {
-		if (!confirm('Rotate the SSH deploy key? You must paste the new public key into GitHub before the next deploy, or it will fail.')) {
+		if (
+			!(await dialog.confirm({
+				title: 'Rotate the SSH deploy key?',
+				body: 'You must paste the new public key into GitHub before the next deploy, or it will fail.',
+				tone: 'warning',
+				confirmLabel: 'Rotate'
+			}))
+		)
 			return;
-		}
 		try {
 			const k = await appsApi.rotateDeployKey(slug);
 			revealedPublicKey = k.publicKey;
 			revealedFingerprint = k.fingerprint;
 			await loadApp();
 			await loadExistingDeployKey();
+			toast.success('Deploy key rotated', { description: 'Update GitHub with the new public key.' });
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Rotate failed');
+			toast.error('Rotate failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 
 	async function rotateWebhookSecret() {
-		if (!confirm('Rotate the webhook secret? Update GitHub with the new value afterwards.')) return;
+		if (
+			!(await dialog.confirm({
+				title: 'Rotate the webhook secret?',
+				body: 'Update GitHub with the new value afterwards or pushes will be rejected.',
+				tone: 'warning',
+				confirmLabel: 'Rotate'
+			}))
+		)
+			return;
 		try {
 			const { webhookSecret } = await appsApi.rotateWebhookSecret(slug);
 			revealedSecret = webhookSecret;
 			await loadApp();
+			toast.success('Webhook secret rotated');
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Rotate failed');
+			toast.error('Rotate failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 
@@ -442,7 +542,18 @@
 	{:else}
 		<div class="flex items-center justify-between">
 			<div>
-				<h1 class="text-2xl font-semibold text-zinc-900">{app.name}</h1>
+				<div class="flex items-center gap-2">
+					<h1 class="text-2xl font-semibold text-zinc-900">{app.name}</h1>
+					{#if dirty.has(slug)}
+						<span
+							class="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-warning-soft)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning-soft-fg)]"
+							title="Configuration changed — redeploy to apply"
+						>
+							<span class="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]"></span>
+							Pending changes
+						</span>
+					{/if}
+				</div>
 				<p class="mt-1 text-sm text-zinc-500">
 					{app.slug} · {app.status}
 					{#if app.lastDeployedCommitSha}
@@ -585,6 +696,15 @@
 							{#key watchedID}
 								<LogStream topic={`deploy.${watchedID}`} height="14rem" showStream={false} />
 							{/key}
+						</div>
+						<div class="mt-3 flex justify-end">
+							<button
+								type="button"
+								onclick={cancelWatching}
+								class="text-xs text-zinc-500 hover:text-zinc-700 hover:underline"
+							>
+								Stop watching
+							</button>
 						</div>
 					</Card>
 				{:else}
@@ -1001,12 +1121,23 @@
 							<Button
 								variant="secondary"
 								onclick={async () => {
-									if (!confirm('Rotate the outbound webhook secret? Update the receiver afterwards.')) return;
+									if (
+										!(await dialog.confirm({
+											title: 'Rotate notification secret?',
+											body: 'Update the receiver afterwards or it will reject signed events.',
+											tone: 'warning',
+											confirmLabel: 'Rotate'
+										}))
+									)
+										return;
 									try {
 										const r = await appsApi.rotateNotificationSecret(slug);
 										revealedSecret = r.webhookSecret;
+										toast.success('Notification secret rotated');
 									} catch (err) {
-										alert(err instanceof ApiError ? err.message : 'Rotate failed');
+										toast.error('Rotate failed', {
+											description: err instanceof ApiError ? err.message : undefined
+										});
 									}
 								}}
 							>

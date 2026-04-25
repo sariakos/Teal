@@ -23,6 +23,8 @@
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { dialog } from '$lib/stores/dialog.svelte';
 
 	let acmeEmail = $state('');
 	let acmeStaging = $state(false);
@@ -99,14 +101,24 @@
 	}
 
 	async function selfUpdate() {
-		const typed = prompt('Type "update-platform" to confirm. Teal will restart momentarily.');
+		const typed = await dialog.prompt({
+			title: 'Update Teal platform?',
+			body: 'Pulls the latest backend image, restarts the container. There will be a brief outage of the Teal UI; running app deploys finish independently.',
+			tone: 'warning',
+			expect: 'update-platform',
+			placeholder: 'update-platform',
+			help: 'Type the phrase to confirm.',
+			confirmLabel: 'Update'
+		});
 		if (typed !== 'update-platform') return;
 		try {
 			const r = await platformApi.selfUpdate();
 			updateRequested = true;
-			alert(r.message);
+			toast.info(r.message, { duration: 8000 });
 		} catch (err) {
-			alert(err instanceof ApiError ? err.message : 'Self-update failed');
+			toast.error('Self-update failed', {
+				description: err instanceof ApiError ? err.message : undefined
+			});
 		}
 	}
 

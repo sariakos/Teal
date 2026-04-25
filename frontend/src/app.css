@@ -1,17 +1,23 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
 
 /*
-  Teal palette + design tokens.
+  Teal design system.
 
   Tailwind v4 uses CSS-first configuration: anything declared in @theme
-  becomes a Tailwind utility (e.g. bg-teal-500). We pin the brand teal here
-  and define a small set of semantic tokens (surface / fg / muted) used by
-  shadcn-svelte primitives. The palette is intentionally narrow — adding
-  colors should be a deliberate decision, not a habit.
+  becomes a Tailwind utility (e.g. bg-teal-500, font-sans, shadow-card).
+  Semantic tokens (--color-bg, --color-fg, etc.) are exposed both as
+  Tailwind colors AND raw CSS variables so components can use either
+  `bg-bg` utilities or `var(--color-bg)` directly.
+
+  Dark mode: [data-theme='dark'] on <html> overrides the semantic tokens.
+  The toggle is set before paint by an inline script in app.html (see
+  there) to avoid a flash of light theme on dark-mode reload.
 */
 
 @theme {
-	/* Brand teal — derived from #0d9488 (Tailwind teal-600). */
+	/* Brand teal — Tailwind teal-600 anchor. */
 	--color-teal-50: #f0fdfa;
 	--color-teal-100: #ccfbf1;
 	--color-teal-200: #99f6e4;
@@ -24,46 +30,130 @@
 	--color-teal-900: #134e4a;
 	--color-teal-950: #042f2e;
 
-	/* Semantic surface / foreground tokens — light theme. The dark theme
-	   overrides these in [data-theme='dark']. */
-	--color-bg: #fafafa;
+	/* Semantic surface / foreground tokens — light theme defaults. The
+	   dark theme overrides these in the [data-theme='dark'] block below. */
+	--color-bg: #fafaf9;
+	--color-bg-subtle: #f5f5f4;
 	--color-surface: #ffffff;
-	--color-surface-muted: #f4f4f5;
-	--color-border: #e4e4e7;
-	--color-fg: #18181b;
-	--color-fg-muted: #71717a;
+	--color-surface-muted: #f5f5f4;
+	--color-surface-hover: #fafaf9;
+	--color-border: #e7e5e4;
+	--color-border-strong: #d6d3d1;
+	--color-fg: #1c1917;
+	--color-fg-muted: #57534e;
+	--color-fg-subtle: #a8a29e;
 	--color-accent: var(--color-teal-600);
+	--color-accent-hover: var(--color-teal-700);
 	--color-accent-fg: #ffffff;
+	--color-accent-soft: var(--color-teal-50);
+	--color-accent-soft-fg: var(--color-teal-800);
 	--color-danger: #dc2626;
+	--color-danger-hover: #b91c1c;
+	--color-danger-fg: #ffffff;
+	--color-danger-soft: #fef2f2;
+	--color-danger-soft-fg: #991b1b;
+	--color-success: #16a34a;
+	--color-success-soft: #f0fdf4;
+	--color-success-soft-fg: #166534;
+	--color-warning: #d97706;
+	--color-warning-soft: #fffbeb;
+	--color-warning-soft-fg: #92400e;
+	--color-info: #2563eb;
+	--color-info-soft: #eff6ff;
+	--color-info-soft-fg: #1e40af;
+
+	/* Typography. Inter Variable (sans), JetBrains Mono (logs/code). */
+	--font-sans:
+		'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+		'Helvetica Neue', Arial, sans-serif;
+	--font-mono:
+		'JetBrains Mono Variable', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+		monospace;
+
+	/* Shadows tuned for both light and dark surfaces. The dark overrides
+	   below tone down opacity since shadows on dark backgrounds need less
+	   visual weight to read. */
+	--shadow-xs: 0 1px 1px 0 rgb(0 0 0 / 0.04);
+	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+	--shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+	--shadow-popover: 0 8px 24px -4px rgb(0 0 0 / 0.12), 0 4px 8px -2px rgb(0 0 0 / 0.06);
+	--shadow-modal: 0 24px 48px -12px rgb(0 0 0 / 0.25);
+
+	/* Radius scale. */
+	--radius-sm: 0.25rem;
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.75rem;
+	--radius-2xl: 1rem;
 }
 
 [data-theme='dark'] {
-	--color-bg: #09090b;
+	--color-bg: #0a0a0a;
+	--color-bg-subtle: #111110;
 	--color-surface: #18181b;
-	--color-surface-muted: #27272a;
+	--color-surface-muted: #1f1f23;
+	--color-surface-hover: #27272a;
 	--color-border: #27272a;
-	--color-fg: #fafafa;
+	--color-border-strong: #3f3f46;
+	--color-fg: #fafaf9;
 	--color-fg-muted: #a1a1aa;
-	--color-accent: var(--color-teal-500);
+	--color-fg-subtle: #71717a;
+	--color-accent: var(--color-teal-400);
+	--color-accent-hover: var(--color-teal-300);
 	--color-accent-fg: #042f2e;
+	--color-accent-soft: rgb(20 184 166 / 0.12);
+	--color-accent-soft-fg: var(--color-teal-200);
+	--color-danger: #f87171;
+	--color-danger-hover: #fca5a5;
+	--color-danger-fg: #450a0a;
+	--color-danger-soft: rgb(248 113 113 / 0.12);
+	--color-danger-soft-fg: #fca5a5;
+	--color-success: #4ade80;
+	--color-success-soft: rgb(74 222 128 / 0.12);
+	--color-success-soft-fg: #86efac;
+	--color-warning: #fbbf24;
+	--color-warning-soft: rgb(251 191 36 / 0.12);
+	--color-warning-soft-fg: #fcd34d;
+	--color-info: #60a5fa;
+	--color-info-soft: rgb(96 165 250 / 0.12);
+	--color-info-soft-fg: #93c5fd;
+
+	--shadow-xs: 0 1px 1px 0 rgb(0 0 0 / 0.3);
+	--shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+	--shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 1px 3px 0 rgb(0 0 0 / 0.4);
+	--shadow-popover: 0 8px 24px -4px rgb(0 0 0 / 0.5), 0 4px 8px -2px rgb(0 0 0 / 0.4);
+	--shadow-modal: 0 24px 48px -12px rgb(0 0 0 / 0.6);
 }
 
-html, body {
+html,
+body {
 	background-color: var(--color-bg);
 	color: var(--color-fg);
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	font-family: var(--font-sans);
 	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	font-feature-settings: 'cv11', 'ss01', 'ss03';
 }
 
-/* Form controls — minimal cross-browser baseline. shadcn-svelte will layer
-   on top once components are added. */
-input, button, textarea, select {
+input,
+button,
+textarea,
+select {
 	font: inherit;
 	color: inherit;
 }
 
 button {
 	cursor: pointer;
+}
+
+/* Color-scheme hint so native form controls (date pickers, scrollbars)
+   match the active theme without further plumbing. */
+:root {
+	color-scheme: light;
+}
+[data-theme='dark'] {
+	color-scheme: dark;
 }
 
 /* Wrapped in @layer base so utility classes (text-white, text-zinc-500,
@@ -78,5 +168,63 @@ button {
 	}
 	a:hover {
 		text-decoration: underline;
+	}
+
+	/* Cross-component scrollbar polish. Chrome/Safari only — Firefox uses
+	   scrollbar-color set on :root via color-scheme. */
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		background-color: var(--color-border-strong);
+		border-radius: 6px;
+		border: 2px solid var(--color-bg);
+	}
+	::-webkit-scrollbar-thumb:hover {
+		background-color: var(--color-fg-subtle);
+	}
+}
+
+/* Animation keyframes used by Toast and ConfirmDialog. */
+@keyframes toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+@keyframes toast-out {
+	from {
+		opacity: 1;
+		transform: translateY(0);
+	}
+	to {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+}
+@keyframes overlay-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+@keyframes dialog-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
 	}
 }

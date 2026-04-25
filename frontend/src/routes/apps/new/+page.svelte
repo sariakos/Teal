@@ -23,7 +23,6 @@
 
 	let name = $state('');
 	let slug = $state('');
-	let domains = $state(''); // comma-separated in the form
 	let branch = $state('main');
 	let autoDeploy = $state(true);
 
@@ -100,13 +99,17 @@
 					repoFullName = fullName;
 				}
 			}
+			// Per-service Routes are configured on the app's Settings tab
+			// after first deploy (so we know which services exist). The
+			// new-app form just creates the app shell; routing comes
+			// later. domains:[] keeps the wire shape consistent.
 			const payload =
 				mode === 'git'
 					? {
 							slug,
 							name,
 							composeFile: '', // engine reads from git
-							domains: domains.split(',').map((d) => d.trim()).filter(Boolean),
+							domains: [],
 							autoDeployBranch: branch,
 							autoDeployEnabled: autoDeploy,
 							gitUrl,
@@ -121,7 +124,7 @@
 							slug,
 							name,
 							composeFile,
-							domains: domains.split(',').map((d) => d.trim()).filter(Boolean),
+							domains: [],
 							autoDeployBranch: branch,
 							autoDeployEnabled: false
 						};
@@ -325,13 +328,6 @@
 							class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
 						/>
 					</div>
-				</div>
-
-				<div>
-					<label for="domains" class="mb-1 block text-sm font-medium text-zinc-700">
-						Domains (comma-separated; optional)
-					</label>
-					<Input id="domains" bind:value={domains} placeholder="myapp.srv.example.com" />
 				</div>
 
 				{#if mode === 'git'}

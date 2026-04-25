@@ -156,7 +156,6 @@
 	let formMemoryLimit = $state('');
 	let formNotifyWebhookUrl = $state('');
 	let formNotifyEmail = $state('');
-	let formDomains = $state(''); // comma-separated; same shape as the New App form
 	let manualInstallationID = $state<string>('');
 
 	// GitHub App repos: populated when the user picks github_app auth.
@@ -207,7 +206,6 @@
 		formMemoryLimit = a.memoryLimit ?? '';
 		formNotifyWebhookUrl = a.notificationWebhookUrl ?? '';
 		formNotifyEmail = a.notificationEmail ?? '';
-		formDomains = (a.domains ?? []).join(', ');
 	}
 
 	function seedRoutesFromApp(a: AppDetail, svcs: ServiceInfo[]) {
@@ -375,11 +373,7 @@
 				cpuLimit: formCPULimit,
 				memoryLimit: formMemoryLimit,
 				notificationWebhookUrl: formNotifyWebhookUrl,
-				notificationEmail: formNotifyEmail,
-				domains: formDomains
-					.split(',')
-					.map((d) => d.trim())
-					.filter(Boolean)
+				notificationEmail: formNotifyEmail
 			});
 			if (resp.newWebhookSecret) revealedSecret = resp.newWebhookSecret;
 			if (resp.newPublicKey) {
@@ -541,18 +535,28 @@
 						<div class="flex justify-between"><dt class="text-zinc-500">App status</dt><dd>{app.status}</dd></div>
 						<div class="flex justify-between"><dt class="text-zinc-500">Active color</dt><dd>{app.activeColor || '—'}</dd></div>
 						<div class="flex justify-between gap-2">
-							<dt class="text-zinc-500">Domains</dt>
-							<dd class="truncate text-right">
-								{#if app.domains.length === 0}
-									—
+							<dt class="text-zinc-500">URLs</dt>
+							<dd class="text-right">
+								{#if (app.routes ?? []).length === 0}
+									<span class="text-zinc-400">none — add a route in Settings</span>
 								{:else}
-									{#each app.domains as d, i}{#if i > 0}, {/if}<a
-											class="text-teal-700 hover:underline"
-											href={`https://${d}`}
-											target="_blank"
-											rel="noopener"
-										>{d}</a
-										>{/each}
+									<ul class="space-y-0.5">
+										{#each app.routes as r}
+											<li>
+												<a
+													class="text-teal-700 hover:underline"
+													href={`https://${r.domain}`}
+													target="_blank"
+													rel="noopener"
+												>
+													{r.domain}
+												</a>
+												{#if r.service}
+													<span class="ml-1 text-xs text-zinc-500">→ {r.service}</span>
+												{/if}
+											</li>
+										{/each}
+									</ul>
 								{/if}
 							</dd>
 						</div>
@@ -770,34 +774,6 @@
 						</div>
 					</form>
 				{/if}
-			</Card>
-
-			<Card title="Domains (legacy)">
-				<form
-					onsubmit={(e) => {
-						e.preventDefault();
-						void saveSettings();
-					}}
-					class="space-y-3"
-				>
-					<div>
-						<label for="domains" class="mb-1 block text-sm font-medium text-zinc-700">
-							Comma-separated hostnames — applied to the primary service only.
-						</label>
-						<Input
-							id="domains"
-							bind:value={formDomains}
-							placeholder="myapp.example.com, alt.example.com"
-						/>
-						<p class="mt-1 text-xs text-zinc-500">
-							Used when no Routes are configured above. Bare hostnames only — schemes and ports
-							are stripped on save.
-						</p>
-					</div>
-					<div class="flex justify-end">
-						<Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
-					</div>
-				</form>
 			</Card>
 
 			<Card title="Git source">

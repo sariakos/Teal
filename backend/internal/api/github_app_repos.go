@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -60,27 +61,53 @@ type reposResponse struct {
 	Installations []installationEntry `json:"installations"`
 }
 
-// list handles GET /apps/{slug}/github-app/repos. The {slug} URL
-// param isn't used today (we don't filter installations per-app), but
-// keeping the route under the per-app namespace lets a future
-// per-org-restricted view live in the same place.
+// list handles GET /apps/{slug}/github-app/repos. The slug is only
+// used to 404 a bogus app — the response is the same global view of
+// installations a future per-app filter would narrow.
 func (h *gitHubAppReposHandler) list(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if _, err := h.store.Apps.GetBySlug(r.Context(), slug); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "app not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "lookup app")
+		return
+	}
+	out, err := h.fetch(r)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// listGlobal handles GET /github-app/repos. Same payload, no slug
+// constraint — used by the new-app form (no app exists yet).
+func (h *gitHubAppReposHandler) listGlobal(w http.ResponseWriter, r *http.Request) {
+	out, err := h.fetch(r)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// fetch is the shared data-loading body. Returns reposResponse with
+// Configured=false when the platform App isn't set up yet (callers
+// 200 that — it's a useful state for the UI, not an error).
+func (h *gitHubAppReposHandler) fetch(r *http.Request) (reposResponse, error) {
 	cfg, err := githubapp.LoadConfig(r.Context(), h.store, h.codec)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "load app config: "+err.Error())
-		return
+		return reposResponse{}, fmt.Errorf("load app config: %w", err)
 	}
 	if !cfg.Configured() {
-		writeJSON(w, http.StatusOK, reposResponse{Configured: false})
-		return
+		return reposResponse{Configured: false}, nil
 	}
-
 	insts, err := githubapp.ListInstallations(r.Context(), h.httpDoer, cfg, time.Now())
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "list installations: "+err.Error())
-		return
+		return reposResponse{}, fmt.Errorf("list installations: %w", err)
 	}
-
 	out := reposResponse{Configured: true, AppSlug: cfg.AppSlug}
 	for _, ins := range insts {
 		entry := installationEntry{
@@ -114,19 +141,5 @@ func (h *gitHubAppReposHandler) list(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Installations = append(out.Installations, entry)
 	}
-
-	// Verify the URL slug references a real app, but only after we
-	// have something useful to return — saves a DB hit on the common
-	// "App not configured" path. 404 a bogus slug.
-	slug := chi.URLParam(r, "slug")
-	if _, err := h.store.Apps.GetBySlug(r.Context(), slug); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "app not found")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, "lookup app")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, out)
+	return out, nil
 }

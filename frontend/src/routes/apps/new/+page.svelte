@@ -8,9 +8,11 @@
 	 * key + a webhook secret. Both are returned ONCE in the response;
 	 * we hold the user on this page until they've copied them.
 	 */
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { appsApi } from '$lib/api/apps';
 	import { ApiError } from '$lib/api/client';
+	import { githubAppReposApi, type AppReposResponse } from '$lib/api/github_app';
 	import type { GitAuthKind } from '$lib/api/types';
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
@@ -48,6 +50,30 @@
 	let revealedFingerprint = $state<string | null>(null);
 	let createdSlug = $state<string | null>(null);
 
+	// GitHub App repo picker. Loaded once on mount; stays null when
+	// the platform App isn't configured (we just hide the picker
+	// then). Selection encoded as "<installationId>::<full_name>::<defaultBranch>"
+	// so a single <select> carries everything we need to prefill.
+	let ghaRepos = $state<AppReposResponse | null>(null);
+	let ghaReposLoading = $state(true);
+	let selectedRepoKey = $state('');
+
+	function pickRepo(value: string) {
+		selectedRepoKey = value;
+		if (!value) return;
+		const [_, fullName, defaultBranch] = value.split('::');
+		if (!fullName) return;
+		const last = fullName.split('/').pop() ?? fullName;
+		// Prefill from the repo name. The user can still edit before
+		// submitting; slugTouched stays false unless they actually
+		// type into the slug field.
+		name = last;
+		slugTouched = false;
+		gitUrl = `https://github.com/${fullName}.git`;
+		if (defaultBranch) branch = defaultBranch;
+		gitAuthKind = 'github_app';
+	}
+
 	let slugTouched = $state(false);
 	$effect(() => {
 		if (!slugTouched) {
@@ -64,6 +90,16 @@
 		error = null;
 		submitting = true;
 		try {
+			let installationId: number | undefined;
+			let repoFullName: string | undefined;
+			if (gitAuthKind === 'github_app' && selectedRepoKey) {
+				const [idStr, fullName] = selectedRepoKey.split('::');
+				const idNum = Number(idStr);
+				if (Number.isInteger(idNum) && idNum > 0 && fullName) {
+					installationId = idNum;
+					repoFullName = fullName;
+				}
+			}
 			const payload =
 				mode === 'git'
 					? {
@@ -77,7 +113,9 @@
 							gitAuthKind,
 							gitCredential: gitCredential || undefined,
 							gitBranch: branch,
-							gitComposePath
+							gitComposePath,
+							githubAppInstallationId: installationId,
+							githubAppRepo: repoFullName
 						}
 					: {
 							slug,
@@ -118,6 +156,16 @@
 	const webhookURL = $derived(
 		createdSlug ? `${location.origin}/api/v1/webhooks/github/${createdSlug}` : ''
 	);
+
+	onMount(async () => {
+		try {
+			ghaRepos = await githubAppReposApi.listGlobal();
+		} catch {
+			ghaRepos = null;
+		} finally {
+			ghaReposLoading = false;
+		}
+	});
 </script>
 
 <div class="mx-auto max-w-3xl space-y-6">
@@ -233,6 +281,56 @@
 
 				{#if mode === 'git'}
 					<div class="space-y-4">
+						{#if ghaRepos && ghaRepos.configured && ghaRepos.installations.some((i) => i.repos.length > 0)}
+							<div class="rounded-md border border-teal-200 bg-teal-50 p-3">
+								<label for="repoPick" class="mb-1 block text-sm font-medium text-teal-900">
+									Pick a connected repo (recommended)
+								</label>
+								<select
+									id="repoPick"
+									value={selectedRepoKey}
+									onchange={(e) => pickRepo((e.currentTarget as HTMLSelectElement).value)}
+									class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
+								>
+									<option value="">— or fill in manually below —</option>
+									{#each ghaRepos.installations as inst (inst.installationId)}
+										{#if inst.repos.length > 0}
+											<optgroup label={inst.accountLogin}>
+												{#each inst.repos as r (r.fullName)}
+													<option value={`${inst.installationId}::${r.fullName}::${r.defaultBranch}`}>
+														{r.fullName}{r.private ? ' 🔒' : ''}
+													</option>
+												{/each}
+											</optgroup>
+										{/if}
+									{/each}
+								</select>
+								<p class="mt-1 text-xs text-teal-800">
+									Picking a repo prefills name, slug, branch, git URL and links the GitHub
+									App installation in one save.
+								</p>
+							</div>
+						{:else if ghaRepos && !ghaRepos.configured && !ghaReposLoading}
+							<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+								The platform GitHub App isn't configured yet — set it up at
+								<a class="underline" href="/settings/github-app">Settings → GitHub App</a>
+								to get a one-click repo picker here. You can still fill in the form manually.
+							</div>
+						{:else if ghaRepos && ghaRepos.configured && ghaRepos.installations.length === 0}
+							<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+								The platform GitHub App is configured but isn't installed on any repo yet.
+								{#if ghaRepos.appSlug}
+									<a
+										class="underline"
+										target="_blank"
+										rel="noopener"
+										href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
+									>
+										Install on GitHub →
+									</a>
+								{/if}
+							</div>
+						{/if}
 						<div>
 							<label for="giturl" class="mb-1 block text-sm font-medium text-zinc-700">
 								Git URL

@@ -55,6 +55,66 @@
 		<Button onclick={() => goto('/apps/new')}>New app</Button>
 	</div>
 
+	{#if summary && (!summary.githubAppConfigured || summary.appCount === 0)}
+		<!-- First-run onboarding card. Disappears once both:
+		     - the platform GitHub App is configured (one-click on the
+		       Settings page), and
+		     - at least one app exists.
+		     The whole point: bring a fresh install to "deploying real
+		     apps" with as few clicks as possible. -->
+		<Card title="Get started">
+			<ol class="space-y-3 text-sm">
+				<li class="flex items-start gap-3">
+					<span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full {summary.githubAppConfigured ? 'bg-teal-600 text-white' : 'bg-zinc-200 text-zinc-700'} text-xs font-bold">
+						{summary.githubAppConfigured ? '✓' : '1'}
+					</span>
+					<div class="flex-1">
+						<div class="font-medium text-zinc-800">
+							Connect a GitHub App
+							{#if summary.githubAppConfigured}
+								<span class="ml-1 text-xs font-normal text-teal-700">— done</span>
+							{/if}
+						</div>
+						<p class="text-xs text-zinc-500">
+							One click to create + authorise — Teal then auto-fills repo, branch and auth on
+							every new app.
+						</p>
+						{#if !summary.githubAppConfigured}
+							<div class="mt-2">
+								<Button onclick={() => goto('/settings/github-app')}>
+									Set up the GitHub App →
+								</Button>
+							</div>
+						{/if}
+					</div>
+				</li>
+				<li class="flex items-start gap-3">
+					<span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full {summary.appCount > 0 ? 'bg-teal-600 text-white' : 'bg-zinc-200 text-zinc-700'} text-xs font-bold">
+						{summary.appCount > 0 ? '✓' : '2'}
+					</span>
+					<div class="flex-1">
+						<div class="font-medium text-zinc-800">
+							Create your first app
+							{#if summary.appCount > 0}
+								<span class="ml-1 text-xs font-normal text-teal-700">— {summary.appCount} configured</span>
+							{/if}
+						</div>
+						<p class="text-xs text-zinc-500">
+							Pick a repo from the dropdown — Teal handles the rest.
+						</p>
+						{#if summary.appCount === 0 && summary.githubAppConfigured}
+							<div class="mt-2">
+								<Button onclick={() => goto('/apps/new')}>
+									New app →
+								</Button>
+							</div>
+						{/if}
+					</div>
+				</li>
+			</ol>
+		</Card>
+	{/if}
+
 	{#if summary}
 		<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 			<Card>

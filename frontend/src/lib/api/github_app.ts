@@ -64,5 +64,7 @@ export interface AppReposResponse {
 }
 
 export const githubAppReposApi = {
-	list: (slug: string) => api.get<AppReposResponse>(`/apps/${slug}/github-app/repos`)
+	list: (slug: string) => api.get<AppReposResponse>(`/apps/${slug}/github-app/repos`),
+	// Used by the new-app form, before any app exists.
+	listGlobal: () => api.get<AppReposResponse>('/github-app/repos')
 };

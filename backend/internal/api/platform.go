@@ -14,16 +14,18 @@ import (
 	"github.com/sariakos/teal/backend/internal/containerwatcher"
 	"github.com/sariakos/teal/backend/internal/docker"
 	"github.com/sariakos/teal/backend/internal/domain"
+	"github.com/sariakos/teal/backend/internal/githubapp"
 	"github.com/sariakos/teal/backend/internal/store"
 )
 
 // platformSummaryResponse drives the dashboard top widget.
 type platformSummaryResponse struct {
-	AppCount           int                       `json:"appCount"`
-	RunningContainers  int                       `json:"runningContainers"`
-	TotalDiskBytes     int64                     `json:"totalDiskBytes"`
-	WorkdirDiskBytes   int64                     `json:"workdirDiskBytes"`
-	RecentFailures     []recentFailureResponse   `json:"recentFailures"`
+	AppCount             int                     `json:"appCount"`
+	RunningContainers    int                     `json:"runningContainers"`
+	TotalDiskBytes       int64                   `json:"totalDiskBytes"`
+	WorkdirDiskBytes     int64                   `json:"workdirDiskBytes"`
+	RecentFailures       []recentFailureResponse `json:"recentFailures"`
+	GitHubAppConfigured  bool                    `json:"githubAppConfigured"`
 }
 
 type recentFailureResponse struct {
@@ -85,6 +87,14 @@ func (h *platformHandler) summary(w http.ResponseWriter, r *http.Request) {
 	if h.workdirRoot != "" {
 		resp.WorkdirDiskBytes = dirSize(h.workdirRoot)
 		resp.TotalDiskBytes = resp.WorkdirDiskBytes
+	}
+
+	// "Is the platform GitHub App set up?" — checked by reading the
+	// app-id setting directly (no decryption needed). The dashboard's
+	// onboarding card branches on this so first-time operators see a
+	// "Set up GitHub App" link until they've done it.
+	if v, _ := h.store.PlatformSettings.GetOrDefault(r.Context(), githubapp.SettingAppID, ""); v != "" && v != "0" {
+		resp.GitHubAppConfigured = true
 	}
 
 	// Recent failures: scan the last 50 deployments for any failed.

@@ -159,10 +159,17 @@ type createAppRequest struct {
 	// response includes one-shot secrets (newPublicKey /
 	// newWebhookSecret) the UI must surface immediately.
 	GitURL         string `json:"gitUrl"`
-	GitAuthKind    string `json:"gitAuthKind"`     // "" | "ssh" | "pat"
+	GitAuthKind    string `json:"gitAuthKind"`     // "" | "ssh" | "pat" | "github_app"
 	GitCredential  string `json:"gitCredential"`   // PEM (SSH) or raw PAT
 	GitBranch      string `json:"gitBranch"`
 	GitComposePath string `json:"gitComposePath"`
+
+	// GitHub App linkage. When the new-app form's repo picker is
+	// used, both arrive together — installation ID + "owner/repo"
+	// full name — so the app lands fully linked in one round-trip
+	// instead of needing a follow-up Settings save.
+	GitHubAppInstallationID int64  `json:"githubAppInstallationId"`
+	GitHubAppRepo           string `json:"githubAppRepo"`
 
 	// Routes — per-service routing. When omitted/empty the legacy
 	// Domains-to-primary path applies. See UpdateAppRequest for the
@@ -205,11 +212,13 @@ func (h *appsHandler) create(w http.ResponseWriter, r *http.Request) {
 		Slug: req.Slug, Name: req.Name, ComposeFile: req.ComposeFile,
 		Domains: joinDomains(req.Domains), AutoDeployBranch: req.AutoDeployBranch,
 		AutoDeployEnabled: req.AutoDeployEnabled,
-		GitURL:         gitURL,
-		GitAuthKind:    gitKind,
-		GitBranch:      strings.TrimSpace(req.GitBranch),
-		GitComposePath: gitComposePath,
-		Routes:         normalizeRoutes(req.Routes),
+		GitURL:                  gitURL,
+		GitAuthKind:             gitKind,
+		GitBranch:               strings.TrimSpace(req.GitBranch),
+		GitComposePath:          gitComposePath,
+		GitHubAppInstallationID: req.GitHubAppInstallationID,
+		GitHubAppRepo:           strings.TrimSpace(req.GitHubAppRepo),
+		Routes:                  normalizeRoutes(req.Routes),
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {

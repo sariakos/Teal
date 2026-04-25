@@ -36,6 +36,11 @@ export interface PlatformSummary {
 		failureReason: string;
 		completedAt: string;
 	}>;
+	// True once the admin has set up the platform-wide GitHub App
+	// (manifest flow or manual paste). Drives the dashboard's
+	// onboarding card — disappears when both this is true and at
+	// least one app exists.
+	githubAppConfigured: boolean;
 }
 
 export const platformApi = {

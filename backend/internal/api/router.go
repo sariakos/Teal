@@ -217,6 +217,7 @@ func newRouter(d Deps) http.Handler {
 				r.Post("/apps/{slug}/rotate-notification-secret", appsH.rotateNotificationSecret)
 				r.Post("/apps/{slug}/install-github-app", ghAppH.startInstall)
 				r.Get("/apps/{slug}/github-app/repos", ghAppReposH.list)
+				r.Get("/github-app/repos", ghAppReposH.listGlobal)
 
 				r.Get("/apps/{slug}/envvars", envH.listApp)
 				r.Post("/apps/{slug}/envvars", envH.upsertApp)

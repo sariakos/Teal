@@ -25,6 +25,10 @@ export interface CreateAppInput {
 	gitCredential?: string;
 	gitBranch?: string;
 	gitComposePath?: string;
+	// GitHub App linkage — populated by the new-app form's repo
+	// picker so the app lands fully linked in one round-trip.
+	githubAppInstallationId?: number;
+	githubAppRepo?: string;
 	routes?: Route[];
 }
 

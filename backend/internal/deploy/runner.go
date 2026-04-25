@@ -74,6 +74,78 @@ func (r *ComposeRunner) Down(ctx context.Context, opts ComposeOptions, logSink i
 	return r.run(ctx, logSink, args...)
 }
 
+// TeardownByProject removes every container + network labelled with
+// the given compose project name, without needing the original
+// compose file. Used during app deletion: by then the previous
+// compose may be gone (the workdir was cleaned up, or the file path
+// is unknown) but the running stack is still tagged with the
+// standard `com.docker.compose.project` label compose attaches at
+// `up` time.
+//
+// Volumes are intentionally NOT removed — they often hold the
+// app's primary state (postgres data, uploaded files) and silent
+// data loss on delete is the wrong default. Operator can prune
+// volumes explicitly via the Volumes UI.
+func (r *ComposeRunner) TeardownByProject(ctx context.Context, project string, logSink io.Writer) error {
+	if project == "" {
+		return fmt.Errorf("runner: empty project")
+	}
+	label := "com.docker.compose.project=" + project
+
+	// Containers first (also stops them — `rm -f` does both).
+	ids, err := r.dockerListByLabel(ctx, "ps", label)
+	if err != nil {
+		return fmt.Errorf("list containers: %w", err)
+	}
+	for _, id := range ids {
+		if err := r.run(ctx, logSink, "rm", "-f", "-v", id); err != nil {
+			fmt.Fprintf(logSink, "[warn] rm container %s: %v\n", id, err)
+		}
+	}
+
+	// Networks the project owned. The platform_proxy network is
+	// labelled `teal.managed=true` (NOT the compose-project label)
+	// so this filter naturally skips it.
+	netIDs, err := r.dockerListByLabel(ctx, "network", label)
+	if err != nil {
+		return fmt.Errorf("list networks: %w", err)
+	}
+	for _, id := range netIDs {
+		if err := r.run(ctx, logSink, "network", "rm", id); err != nil {
+			fmt.Fprintf(logSink, "[warn] rm network %s: %v\n", id, err)
+		}
+	}
+	return nil
+}
+
+// dockerListByLabel runs `docker <kind> ls -aq --filter label=...`
+// and returns the IDs (one per line). kind is "ps" (containers),
+// "network", or "volume" — anything that supports `ls -aq --filter
+// label=...`. "ps" is special-cased because `docker ps -a` already
+// includes stopped containers; the others use `ls -a`.
+func (r *ComposeRunner) dockerListByLabel(ctx context.Context, kind, label string) ([]string, error) {
+	var args []string
+	switch kind {
+	case "ps":
+		args = []string{"ps", "-aq", "--filter", "label=" + label}
+	default:
+		args = []string{kind, "ls", "-q", "--filter", "label=" + label}
+	}
+	cmd := exec.CommandContext(ctx, r.DockerBin, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		s := strings.TrimSpace(line)
+		if s != "" {
+			ids = append(ids, s)
+		}
+	}
+	return ids, nil
+}
+
 // Pull runs `docker compose ... pull` to refresh images for non-build
 // services.
 func (r *ComposeRunner) Pull(ctx context.Context, opts ComposeOptions, logSink io.Writer) error {

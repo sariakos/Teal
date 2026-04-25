@@ -741,13 +741,22 @@ var ErrNoRollbackCandidate = errors.New("deploy: no rollback candidate")
 
 // Teardown stops both colors of an App's stack and removes its Traefik
 // config. Used by the API when an App is deleted.
+//
+// Implementation note: the previous version called
+// `docker compose down -f /dev/null -p <project>` on the assumption
+// that compose looks up containers purely by project label. It
+// doesn't — without a compose file there's nothing to act on, so
+// the down was a silent no-op and the user's containers stayed up.
+// We now find containers + networks by the standard
+// `com.docker.compose.project=<name>` label that compose attaches
+// at `up` time, and remove them directly via the docker CLI.
 func (e *Engine) Teardown(ctx context.Context, app domain.App) error {
 	for _, c := range []domain.Color{domain.ColorBlue, domain.ColorGreen} {
 		project := composeProjectName(app.Slug, c)
-		// Best-effort: missing project is fine. We pass /dev/null as the
-		// compose file because docker compose down -p <project> selects
-		// containers by label and doesn't actually need the file.
-		_ = e.runner.Down(ctx, ComposeOptions{Project: project, ComposePath: "/dev/null"}, io.Discard)
+		if err := e.runner.TeardownByProject(ctx, project, io.Discard); err != nil {
+			e.logger.Warn("teardown by project: best-effort failure",
+				"slug", app.Slug, "project", project, "err", err)
+		}
 	}
 	_ = traefik.Delete(e.cfg.TraefikDynamicDir, app.Slug)
 	_ = e.wd.RemoveApp(app.Slug)

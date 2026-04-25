@@ -13,6 +13,7 @@
 		Route
 	} from '$lib/api/types';
 	import { servicesApi, type ServiceInfo } from '$lib/api/services';
+	import { githubAppReposApi, type AppReposResponse } from '$lib/api/github_app';
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
@@ -157,6 +158,16 @@
 	let formNotifyEmail = $state('');
 	let formDomains = $state(''); // comma-separated; same shape as the New App form
 	let manualInstallationID = $state<string>('');
+
+	// GitHub App repos: populated when the user picks github_app auth.
+	// Keyed by installation so we can render an optgroup per owner.
+	let ghaRepos = $state<AppReposResponse | null>(null);
+	let ghaReposLoading = $state(false);
+	let ghaReposError = $state<string | null>(null);
+	// Selection encoded as "<installationId>::<full_name>" so a single
+	// <select> can carry both the installation ID and the repo path.
+	let selectedRepoKey = $state<string>('');
+	let linkingRepo = $state(false);
 	let settingsError = $state<string | null>(null);
 	let saving = $state(false);
 
@@ -271,6 +282,47 @@
 		}
 	}
 
+	async function loadGitHubAppRepos() {
+		ghaReposLoading = true;
+		ghaReposError = null;
+		try {
+			ghaRepos = await githubAppReposApi.list(slug);
+			// Pre-select the currently linked repo, if any.
+			if (app?.githubAppInstallationId && app.githubAppRepo) {
+				selectedRepoKey = `${app.githubAppInstallationId}::${app.githubAppRepo}`;
+			}
+		} catch (err) {
+			ghaReposError = err instanceof ApiError ? err.message : 'Could not load repos';
+			ghaRepos = null;
+		} finally {
+			ghaReposLoading = false;
+		}
+	}
+
+	async function linkSelectedRepo() {
+		if (!selectedRepoKey) return;
+		const sep = selectedRepoKey.indexOf('::');
+		if (sep < 0) return;
+		const idNum = Number(selectedRepoKey.slice(0, sep));
+		const fullName = selectedRepoKey.slice(sep + 2);
+		if (!Number.isInteger(idNum) || idNum <= 0 || !fullName) return;
+		linkingRepo = true;
+		try {
+			const resp = await appsApi.update(slug, {
+				githubAppInstallationId: idNum,
+				githubAppRepo: fullName,
+				gitUrl: `https://github.com/${fullName}.git`,
+				gitAuthKind: 'github_app'
+			});
+			app = resp;
+			await loadGitHubAppRepos();
+		} catch (err) {
+			alert(err instanceof ApiError ? err.message : 'Link failed');
+		} finally {
+			linkingRepo = false;
+		}
+	}
+
 	async function loadExistingDeployKey() {
 		if (!app || app.gitAuthKind !== 'ssh' || !app.hasGitCredential) {
 			existingPublicKey = null;
@@ -292,9 +344,19 @@
 			seedSettingsForm(app);
 			loadExistingDeployKey();
 			void loadServices();
+			if (formGitAuthKind === 'github_app' || app.gitAuthKind === 'github_app') {
+				void loadGitHubAppRepos();
+			}
 		}
 		if (tab === 'overview' && app) {
 			void loadMetrics();
+		}
+	});
+
+	// Re-fetch repos when the user flips the auth dropdown to github_app.
+	$effect(() => {
+		if (tab === 'settings' && formGitAuthKind === 'github_app' && !ghaRepos && !ghaReposLoading) {
+			void loadGitHubAppRepos();
 		}
 	});
 
@@ -782,92 +844,86 @@
 						</select>
 					</div>
 					{#if formGitAuthKind === 'github_app'}
-						<div class="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
-							{#if app.githubAppInstallationId}
-								<div class="flex items-center justify-between gap-3">
-									<div>
-										<div class="font-medium text-zinc-800">
-											Installed
-											{#if app.githubAppRepo}
-												on <code class="font-mono">{app.githubAppRepo}</code>
-											{/if}
-										</div>
-										<div class="text-xs text-zinc-500">
-											Installation ID: {app.githubAppInstallationId}
-										</div>
-									</div>
-									<Button
-										variant="secondary"
-										onclick={async () => {
-											try {
-												const r = await appsApi.startGitHubAppInstall(slug);
-												location.href = r.installUrl;
-											} catch (err) {
-												alert(err instanceof ApiError ? err.message : 'Could not start install');
-											}
-										}}
-									>
-										Reconfigure
-									</Button>
+						<div class="space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+							{#if ghaReposLoading}
+								<p class="text-zinc-500">Loading installations…</p>
+							{:else if ghaReposError}
+								<p class="text-red-600">{ghaReposError}</p>
+							{:else if !ghaRepos || !ghaRepos.configured}
+								<p class="text-zinc-700">
+									The platform GitHub App isn't configured yet. Set it up at
+									<a class="text-teal-700 underline" href="/settings/github-app">
+										Settings → GitHub App
+									</a>
+									first (one-click flow available there), then come back here.
+								</p>
+							{:else if ghaRepos.installations.length === 0}
+								<div class="space-y-2">
+									<p class="text-zinc-700">
+										The platform App isn't installed on any repos yet. Install it on at least
+										one repo, then refresh.
+									</p>
+									{#if ghaRepos.appSlug}
+										<a
+											class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-xs font-medium text-white hover:bg-teal-700"
+											target="_blank"
+											rel="noopener"
+											href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
+										>
+											Install on GitHub →
+										</a>
+									{/if}
 								</div>
 							{:else}
-								<div class="flex items-center justify-between gap-3">
-									<p class="text-zinc-700">
-										After saving, click below to install the platform GitHub App on this repo.
-										Requires the platform App to be configured at <code>/settings/github-app</code>.
+								<label for="repoPick" class="block text-xs font-medium text-zinc-600">
+									Pick a repo
+								</label>
+								<select
+									id="repoPick"
+									bind:value={selectedRepoKey}
+									class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
+								>
+									<option value="">Select a repository…</option>
+									{#each ghaRepos.installations as inst (inst.installationId)}
+										<optgroup label={inst.accountLogin}>
+											{#if inst.repos.length === 0}
+												<option disabled>(no repos accessible — adjust on GitHub)</option>
+											{:else}
+												{#each inst.repos as r (r.fullName)}
+													<option value={`${inst.installationId}::${r.fullName}`}>
+														{r.fullName}{r.private ? ' 🔒' : ''}
+													</option>
+												{/each}
+											{/if}
+										</optgroup>
+									{/each}
+								</select>
+								<div class="flex items-center justify-between gap-2">
+									<p class="text-xs text-zinc-500">
+										Saving links this app to the picked repo + installation. The Git URL +
+										auth fields are filled in for you.
 									</p>
 									<Button
-										onclick={async () => {
-											try {
-												const r = await appsApi.startGitHubAppInstall(slug);
-												location.href = r.installUrl;
-											} catch (err) {
-												alert(err instanceof ApiError ? err.message : 'Could not start install');
-											}
-										}}
+										variant="secondary"
+										disabled={!selectedRepoKey || linkingRepo}
+										onclick={() => void linkSelectedRepo()}
 									>
-										Install on a repo
+										{linkingRepo ? 'Linking…' : 'Link repo'}
 									</Button>
 								</div>
-								<div class="mt-3 border-t border-zinc-200 pt-3">
-									<label for="manualInstall" class="mb-1 block text-xs font-medium text-zinc-600">
-										Manual fallback — paste the installation ID
-									</label>
-									<div class="flex gap-2">
-										<Input
-											id="manualInstall"
-											bind:value={manualInstallationID}
-											placeholder="e.g. 12345678"
-										/>
-										<Button
-											variant="secondary"
-											disabled={!manualInstallationID}
-											onclick={async () => {
-												const idNum = Number(manualInstallationID);
-												if (!Number.isInteger(idNum) || idNum <= 0) {
-													alert('Installation ID must be a positive integer');
-													return;
-												}
-												try {
-													await appsApi.update(slug, { githubAppInstallationId: idNum });
-													await loadApp();
-												} catch (err) {
-													alert(err instanceof ApiError ? err.message : 'Save failed');
-												}
-											}}
+								{#if ghaRepos.appSlug}
+									<p class="text-xs text-zinc-500">
+										Don't see the repo you want?
+										<a
+											class="text-teal-700 underline"
+											target="_blank"
+											rel="noopener"
+											href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
 										>
-											Link
-										</Button>
-									</div>
-									<p class="mt-1 text-xs text-zinc-500">
-										Use this when the install-then-redirect flow doesn't work (e.g. the App's
-										<strong>Setup URL</strong> wasn't configured). Find the ID at
-										<a class="text-teal-700 underline" target="_blank" rel="noopener" href="https://github.com/settings/installations">
-											github.com/settings/installations
+											Install on more repos →
 										</a>
-										— click your installed app, the URL ends with the ID.
 									</p>
-								</div>
+								{/if}
 							{/if}
 						</div>
 					{/if}

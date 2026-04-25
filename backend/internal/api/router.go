@@ -130,6 +130,15 @@ func newRouter(d Deps) http.Handler {
 	ghAppAdminH := &gitHubAppAdminHandler{
 		logger: d.Logger, store: d.Store, codec: d.Codec,
 	}
+	ghAppManifestH := &gitHubAppManifestHandler{
+		logger: d.Logger, store: d.Store, codec: d.Codec,
+		stateSecret:   d.StateSecret,
+		publicBaseURL: d.PublicBaseURL,
+	}
+	ghAppReposH := &gitHubAppReposHandler{
+		logger: d.Logger, store: d.Store, codec: d.Codec,
+		tokenCache: d.GitHubAppTokenCache,
+	}
 	logsH := &logsHandler{logger: d.Logger, store: d.Store, logbuf: d.LogBuffer, watcher: d.ContainerWatch, workdirRoot: d.WorkdirRoot}
 	servicesH := &servicesHandler{logger: d.Logger, store: d.Store, workdirRoot: d.WorkdirRoot}
 	requiredEnvH := &requiredEnvVarHandler{logger: d.Logger, store: d.Store, workdirRoot: d.WorkdirRoot}
@@ -161,6 +170,12 @@ func newRouter(d Deps) http.Handler {
 		// linkage. Unauth because GitHub is the caller — the state
 		// signature is the bearer of authority.
 		r.Get("/github-app/setup-callback", ghAppH.setupCallback)
+
+		// GitHub App manifest-flow callback. Same auth model as the
+		// install callback above — GitHub is the caller, the state
+		// signature is the authority. Exchanges the temporary code
+		// for the App's persistent credentials and stores them.
+		r.Get("/settings/github-app/manifest-callback", ghAppManifestH.callback)
 
 		// Authenticated endpoints. auth → CSRF order matters (CSRF needs
 		// the session attached by auth).
@@ -201,6 +216,7 @@ func newRouter(d Deps) http.Handler {
 				r.Post("/apps/{slug}/rotate-webhook-secret", appsH.rotateWebhookSecret)
 				r.Post("/apps/{slug}/rotate-notification-secret", appsH.rotateNotificationSecret)
 				r.Post("/apps/{slug}/install-github-app", ghAppH.startInstall)
+				r.Get("/apps/{slug}/github-app/repos", ghAppReposH.list)
 
 				r.Get("/apps/{slug}/envvars", envH.listApp)
 				r.Post("/apps/{slug}/envvars", envH.upsertApp)
@@ -240,6 +256,7 @@ func newRouter(d Deps) http.Handler {
 
 				r.Get("/settings/github-app", ghAppAdminH.get)
 				r.Put("/settings/github-app", ghAppAdminH.put)
+				r.Post("/settings/github-app/manifest-init", ghAppManifestH.init)
 
 				r.Delete("/docker/volumes/{name}", dockerH.deleteVolume)
 

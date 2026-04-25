@@ -57,6 +57,13 @@ type Deps struct {
 	// installer wrote stays put).
 	BaseDomain string
 
+	// BootstrapToken gates the first-admin-create endpoint. The
+	// installer generates one and prints it to the operator's
+	// terminal so the initial admin password isn't created over an
+	// unauthenticated HTTP endpoint. Empty disables the gate (local
+	// dev where there's no remote attacker).
+	BootstrapToken string
+
 	// GitHub App: shared installation-token cache, the platform secret
 	// (used to HMAC-sign install-flow state), and the public base URL
 	// surfaced back to the UI as the callback hint. cmd/teal sets all
@@ -91,6 +98,7 @@ func newRouter(d Deps) http.Handler {
 
 	authH := &authHandler{
 		logger: d.Logger, store: d.Store, authn: d.Authenticator, rateLimiter: d.RateLimiter,
+		bootstrapToken: d.BootstrapToken,
 	}
 	usersH := &usersHandler{logger: d.Logger, store: d.Store}
 	apiKeysH := &apiKeysHandler{logger: d.Logger, store: d.Store, mgr: d.Authenticator.APIKeys}

@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 	"github.com/sariakos/teal/backend/internal/crypto"
 	"github.com/sariakos/teal/backend/internal/deploy"
 	"github.com/sariakos/teal/backend/internal/docker"
+	"github.com/sariakos/teal/backend/internal/domain"
 	"github.com/sariakos/teal/backend/internal/githubapp"
 	"github.com/sariakos/teal/backend/internal/logbuffer"
 	"github.com/sariakos/teal/backend/internal/logging"
@@ -157,6 +159,13 @@ func run() error {
 
 	rtDone := startRealtime(ctx, logger, watcher, scraper, logRegistry, downsampler)
 
+	// One-shot: seed acme.email + acme.staging from env on first boot.
+	// The installer writes TEAL_ACME_EMAIL into /etc/teal/.env so a
+	// fresh deployment can come up with HTTPS without UI fiddling.
+	// Subsequent restarts skip the seed (so admin edits in the UI
+	// aren't overwritten).
+	seedSettingsFromEnv(ctx, logger, st)
+
 	// Write the Traefik static config at boot from current platform
 	// settings. The file always exists so the Traefik container can boot;
 	// admins later edit settings + restart Traefik to enable HTTPS.
@@ -198,6 +207,7 @@ func run() error {
 		TraefikDashboardInsecure: cfg.TraefikDashboardInsecure,
 		TraefikDynamicDir:        cfg.TraefikDynamicDir,
 		BaseDomain:               os.Getenv("TEAL_BASE_DOMAIN"),
+		BootstrapToken:           os.Getenv("TEAL_BOOTSTRAP_TOKEN"),
 		GitHubAppTokenCache:      ghAppTokens,
 		StateSecret:              []byte(cfg.PlatformSecret),
 		PublicBaseURL:            publicBaseURL,
@@ -286,4 +296,38 @@ func startSessionSweeper(ctx context.Context, logger *slog.Logger, st *store.Sto
 		}
 	}()
 	return done
+}
+
+// seedSettingsFromEnv copies one-shot install-time settings from env
+// vars into the platform_settings table, but only when the table
+// doesn't already carry a value for the key. Lets the installer
+// prefill ACME so HTTPS works on first boot, while keeping subsequent
+// UI edits authoritative.
+//
+// Env mapping:
+//   TEAL_ACME_EMAIL     → acme.email
+//   TEAL_ACME_STAGING   → acme.staging  ("true" routes to LE staging)
+func seedSettingsFromEnv(ctx context.Context, logger *slog.Logger, st *store.Store) {
+	tryseed := func(envKey, settingKey string) {
+		v := strings.TrimSpace(os.Getenv(envKey))
+		if v == "" {
+			return
+		}
+		existing, err := st.PlatformSettings.GetOrDefault(ctx, settingKey, "")
+		if err != nil {
+			logger.Warn("seed setting: read existing", "key", settingKey, "err", err)
+			return
+		}
+		if existing != "" {
+			// Don't overwrite an admin-set value.
+			return
+		}
+		if err := st.PlatformSettings.Set(ctx, settingKey, v); err != nil {
+			logger.Warn("seed setting: write", "key", settingKey, "err", err)
+			return
+		}
+		logger.Info("seeded platform setting from env", "key", settingKey)
+	}
+	tryseed("TEAL_ACME_EMAIL", domain.SettingACMEEmail)
+	tryseed("TEAL_ACME_STAGING", domain.SettingACMEStaging)
 }

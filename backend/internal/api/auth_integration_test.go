@@ -83,6 +83,36 @@ func newTestAPI(t *testing.T) (http.Handler, *store.Store) {
 	return newRouter(deps), st
 }
 
+// newTestAPIWithToken builds a router whose authHandler requires the
+// supplied bootstrap token. Used by the token-gating tests.
+func newTestAPIWithToken(t *testing.T, token string) (http.Handler, *store.Store) {
+	t.Helper()
+	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "teal.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	authn := &auth.Authenticator{
+		Sessions: auth.NewSessionManager(st.Sessions, false),
+		APIKeys:  auth.NewAPIKeyManager(st.APIKeys),
+		Users:    st.Users,
+	}
+	codec, err := crypto.NewCodec([]byte("test-secret-padding-to-32-byte-min!!"))
+	if err != nil {
+		t.Fatalf("crypto.NewCodec: %v", err)
+	}
+	deps := Deps{
+		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Store:          st,
+		Docker:         fakeDockerClient{},
+		Authenticator:  authn,
+		RateLimiter:    auth.NewLoginRateLimiter(50, time.Minute),
+		Codec:          codec,
+		BootstrapToken: token,
+	}
+	return newRouter(deps), st
+}
+
 // jsonReq is a small helper to compose a JSON request.
 func jsonReq(method, path string, body any) *http.Request {
 	var r *http.Request
@@ -204,6 +234,57 @@ func TestLoginRejectsBadCredentials(t *testing.T) {
 	}))
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("unknown email: status = %d, want 401", rec.Code)
+	}
+}
+
+func TestRegisterBootstrap_RequiresTokenWhenConfigured(t *testing.T) {
+	const tok = "the-secret-from-installer"
+	h, _ := newTestAPIWithToken(t, tok)
+
+	// 1. Setup-status reports requiresToken=true while no admin exists.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/setup-status", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("setup-status: %d", rec.Code)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"requiresToken":true`)) {
+		t.Errorf("setup-status missing requiresToken=true: %s", rec.Body.String())
+	}
+
+	// 2. Bootstrap without token → 401.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, jsonReq("POST", "/api/v1/register-bootstrap", map[string]string{
+		"email": "admin@example.com", "password": "correct horse battery staple",
+	}))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("missing token: status = %d, want 401, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// 3. Wrong token → 401.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, jsonReq("POST", "/api/v1/register-bootstrap", map[string]string{
+		"email": "admin@example.com", "password": "correct horse battery staple", "token": "nope",
+	}))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("wrong token: status = %d, want 401", rec.Code)
+	}
+
+	// 4. Correct token → 201.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, jsonReq("POST", "/api/v1/register-bootstrap", map[string]string{
+		"email": "admin@example.com", "password": "correct horse battery staple", "token": tok,
+	}))
+	if rec.Code != http.StatusCreated {
+		t.Errorf("correct token: status = %d, want 201, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// 5. Once admin exists, the endpoint 409s regardless of token.
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, jsonReq("POST", "/api/v1/register-bootstrap", map[string]string{
+		"email": "another@example.com", "password": "another long password ok", "token": tok,
+	}))
+	if rec.Code != http.StatusConflict {
+		t.Errorf("post-bootstrap: status = %d, want 409", rec.Code)
 	}
 }
 

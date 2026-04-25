@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -12,6 +13,17 @@ import (
 	"github.com/sariakos/teal/backend/internal/store"
 )
 
+// ctEqual is a constant-time string compare. Returns true when the
+// strings have identical contents and length. Used wherever an
+// attacker could observe response timing — bootstrap token, CSRF
+// header, etc.
+func ctEqual(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 // authHandler bundles the dependencies of the login/logout/me/bootstrap
 // endpoints.
 type authHandler struct {
@@ -19,12 +31,27 @@ type authHandler struct {
 	store       *store.Store
 	authn       *auth.Authenticator
 	rateLimiter *auth.LoginRateLimiter
+
+	// bootstrapToken, when non-empty, is required by registerBootstrap.
+	// The installer generates it and prints it to the operator's
+	// terminal so the very first admin-create request can't be hijacked
+	// over plain HTTP. Empty disables the gate (useful for local dev
+	// where the operator isn't a remote attacker concern).
+	bootstrapToken string
 }
 
 // loginRequest is the JSON body shape for POST /api/v1/login.
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+// bootstrapRequest extends loginRequest with the one-time install
+// token. Token is only required when the server was started with one
+// configured (TEAL_BOOTSTRAP_TOKEN env); otherwise it's ignored.
+type bootstrapRequest struct {
+	loginRequest
+	Token string `json:"token"`
 }
 
 // meResponse describes the currently authenticated principal. CSRF token is
@@ -134,7 +161,10 @@ func (h *authHandler) setupStatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"noUsersYet": none})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"noUsersYet":    none,
+		"requiresToken": none && h.bootstrapToken != "",
+	})
 }
 
 func (h *authHandler) registerBootstrap(w http.ResponseWriter, r *http.Request) {
@@ -148,10 +178,18 @@ func (h *authHandler) registerBootstrap(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var req loginRequest
+	var req bootstrapRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
+	}
+	if h.bootstrapToken != "" {
+		// Constant-time compare so the endpoint can't be probed for
+		// the right token via timing.
+		if !ctEqual(req.Token, h.bootstrapToken) {
+			writeError(w, http.StatusUnauthorized, "invalid or missing bootstrap token")
+			return
+		}
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	if req.Email == "" {

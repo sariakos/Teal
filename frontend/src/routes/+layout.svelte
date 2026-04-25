@@ -61,8 +61,10 @@
 		<Sidebar />
 		<div class="flex flex-1 flex-col overflow-hidden">
 			<TopBar />
-			<main class="flex-1 overflow-auto p-6">
-				{@render children()}
+			<main class="flex-1 overflow-auto">
+				<div class="mx-auto max-w-7xl px-6 py-6 lg:px-8">
+					{@render children()}
+				</div>
 			</main>
 		</div>
 	</div>

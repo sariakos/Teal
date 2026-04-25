@@ -11,10 +11,11 @@
 	import { ApiError } from '$lib/api/client';
 	import { volumesApi } from '$lib/api/volumes';
 	import type { DockerVolume } from '$lib/api/types';
-	import Button from './Button.svelte';
 	import Card from './Card.svelte';
+	import EmptyState from './EmptyState.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
+	import { HardDrive, Trash2 } from '@lucide/svelte';
 
 	let { appSlug }: { appSlug?: string } = $props();
 
@@ -65,43 +66,61 @@
 	onMount(reload);
 </script>
 
-<Card title={appSlug ? `Volumes for ${appSlug}` : 'Volumes'}>
-	{#if error}
-		<div class="text-sm text-red-600">{error}</div>
-	{:else if loading}
-		<div class="text-sm text-zinc-500">Loading…</div>
-	{:else if rows.length === 0}
-		<p class="text-sm text-zinc-500">
-			{appSlug
-				? 'No volumes for this app. Compose-declared volumes appear here once the first deploy creates them.'
-				: 'No volumes on this host.'}
-		</p>
-	{:else}
+{#if error}
+	<Card>
+		<div class="text-sm text-[var(--color-danger)]">{error}</div>
+	</Card>
+{:else if loading}
+	<Card>
+		<div class="text-sm text-[var(--color-fg-muted)]">Loading…</div>
+	</Card>
+{:else if rows.length === 0}
+	<EmptyState
+		icon={HardDrive}
+		title={appSlug ? `No volumes for ${appSlug}` : 'No volumes on this host'}
+		description={appSlug
+			? 'Compose-declared volumes appear here once the first deploy creates them.'
+			: 'Deploy an app with a volume to see it here.'}
+	/>
+{:else}
+	<Card title={appSlug ? `Volumes for ${appSlug}` : 'All volumes'} padded={false}>
 		<table class="w-full text-sm">
-			<thead class="text-left text-xs uppercase text-zinc-500">
-				<tr>
-					<th class="pb-2">Name</th>
-					<th class="pb-2">Driver</th>
-					<th class="pb-2">Mountpoint</th>
-					<th class="pb-2">Created</th>
-					<th class="pb-2"></th>
+			<thead
+				class="text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+			>
+				<tr class="border-b border-[var(--color-border)]">
+					<th class="px-5 py-2.5">Name</th>
+					<th class="px-5 py-2.5">Driver</th>
+					<th class="px-5 py-2.5">Mountpoint</th>
+					<th class="px-5 py-2.5">Created</th>
+					<th class="px-5 py-2.5"></th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each rows as v}
-					<tr class="border-t border-zinc-100">
-						<td class="py-2 font-mono text-xs">{v.name}</td>
-						<td class="py-2 text-zinc-600">{v.driver}</td>
-						<td class="py-2 font-mono text-xs text-zinc-500">{v.mountpoint}</td>
-						<td class="py-2 text-zinc-500">
+					<tr
+						class="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg-subtle)]"
+					>
+						<td class="px-5 py-2.5 font-mono text-xs text-[var(--color-fg)]">{v.name}</td>
+						<td class="px-5 py-2.5 text-[var(--color-fg-muted)]">{v.driver}</td>
+						<td class="px-5 py-2.5 truncate font-mono text-xs text-[var(--color-fg-muted)]">
+							{v.mountpoint}
+						</td>
+						<td class="px-5 py-2.5 text-xs text-[var(--color-fg-muted)]">
 							{v.createdAt ? new Date(v.createdAt).toLocaleString() : '—'}
 						</td>
-						<td class="py-2 text-right">
-							<Button variant="danger" onclick={() => deleteVolume(v.name)}>Delete</Button>
+						<td class="px-5 py-2.5 text-right">
+							<button
+								class="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-danger)] hover:underline"
+								onclick={() => deleteVolume(v.name)}
+							>
+								<Trash2 class="h-3.5 w-3.5" />
+								Delete
+							</button>
 						</td>
 					</tr>
 				{/each}
 			</tbody>
 		</table>
-	{/if}
-</Card>
+	</Card>
+{/if}

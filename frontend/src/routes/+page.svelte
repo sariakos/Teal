@@ -1,7 +1,5 @@
 <!--
   Dashboard. Lists apps with their status and provides quick deploy access.
-  Phase 3: real data from the backend; clicking an app navigates to its
-  detail page where the deploy/rollback controls live.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -11,7 +9,23 @@
 	import type { App } from '$lib/api/types';
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
+	import Badge from '$lib/components/Badge.svelte';
+	import StatusDot from '$lib/components/StatusDot.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { dirty } from '$lib/stores/dirty.svelte';
+	import {
+		Boxes,
+		Plus,
+		ArrowRight,
+		Server,
+		HardDrive,
+		AlertTriangle,
+		CheckCircle2,
+		Circle
+	} from '@lucide/svelte';
+	import GithubMark from '$lib/components/GithubMark.svelte';
+	import type { Component } from 'svelte';
 
 	let apps = $state<App[]>([]);
 	let summary = $state<PlatformSummary | null>(null);
@@ -27,7 +41,10 @@
 
 	async function reload() {
 		try {
-			[apps, summary] = await Promise.all([appsApi.list(), platformApi.summary().catch(() => null)]);
+			[apps, summary] = await Promise.all([
+				appsApi.list(),
+				platformApi.summary().catch(() => null)
+			]);
 			error = null;
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load apps';
@@ -38,75 +55,105 @@
 
 	onMount(reload);
 
-	const statusClass = {
-		idle: 'bg-zinc-100 text-zinc-700',
-		deploying: 'bg-amber-100 text-amber-800',
-		running: 'bg-teal-50 text-teal-700',
-		failed: 'bg-red-100 text-red-700',
-		stopped: 'bg-zinc-200 text-zinc-700'
-	} as const;
+	type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger';
+	const statusTone: Record<App['status'], Tone> = {
+		idle: 'neutral',
+		deploying: 'warning',
+		running: 'success',
+		failed: 'danger',
+		stopped: 'neutral'
+	};
+
+	const statsList: { label: string; value: () => string; icon: Component }[] = [
+		{ label: 'Apps', value: () => String(summary?.appCount ?? 0), icon: Boxes },
+		{
+			label: 'Running containers',
+			value: () => String(summary?.runningContainers ?? 0),
+			icon: Server
+		},
+		{
+			label: 'Workdir on disk',
+			value: () => fmtBytes(summary?.workdirDiskBytes ?? 0),
+			icon: HardDrive
+		},
+		{
+			label: 'Recent failures',
+			value: () => String(summary?.recentFailures.length ?? 0),
+			icon: AlertTriangle
+		}
+	];
 </script>
 
 <div class="space-y-6">
-	<div class="flex items-center justify-between">
-		<div>
-			<h1 class="text-2xl font-semibold text-zinc-900">Dashboard</h1>
-			<p class="mt-1 text-sm text-zinc-500">All apps managed by this Teal instance.</p>
-		</div>
-		<Button onclick={() => goto('/apps/new')}>New app</Button>
-	</div>
+	<PageHeader
+		title="Dashboard"
+		description="All apps managed by this Teal instance."
+	>
+		{#snippet actions()}
+			<Button onclick={() => goto('/apps/new')}>
+				<Plus class="h-4 w-4" />
+				New app
+			</Button>
+		{/snippet}
+	</PageHeader>
 
 	{#if summary && (!summary.githubAppConfigured || summary.appCount === 0)}
 		<!-- First-run onboarding card. Disappears once both:
 		     - the platform GitHub App is configured (one-click on the
 		       Settings page), and
-		     - at least one app exists.
-		     The whole point: bring a fresh install to "deploying real
-		     apps" with as few clicks as possible. -->
-		<Card title="Get started">
-			<ol class="space-y-3 text-sm">
+		     - at least one app exists. -->
+		<Card title="Get started" description="Two clicks from a fresh install to a deploying app.">
+			<ol class="space-y-4 text-sm">
 				<li class="flex items-start gap-3">
-					<span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full {summary.githubAppConfigured ? 'bg-teal-600 text-white' : 'bg-zinc-200 text-zinc-700'} text-xs font-bold">
-						{summary.githubAppConfigured ? '✓' : '1'}
-					</span>
+					{#if summary.githubAppConfigured}
+						<CheckCircle2 class="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-success)]" />
+					{:else}
+						<Circle class="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-fg-subtle)]" />
+					{/if}
 					<div class="flex-1">
-						<div class="font-medium text-zinc-800">
+						<div class="flex flex-wrap items-baseline gap-2 font-medium text-[var(--color-fg)]">
 							Connect a GitHub App
 							{#if summary.githubAppConfigured}
-								<span class="ml-1 text-xs font-normal text-teal-700">— done</span>
+								<Badge tone="success" size="sm">done</Badge>
 							{/if}
 						</div>
-						<p class="text-xs text-zinc-500">
+						<p class="mt-0.5 text-xs text-[var(--color-fg-muted)]">
 							One click to create + authorise — Teal then auto-fills repo, branch and auth on
 							every new app.
 						</p>
 						{#if !summary.githubAppConfigured}
-							<div class="mt-2">
-								<Button onclick={() => goto('/settings/github-app')}>
-									Set up the GitHub App →
+							<div class="mt-3">
+								<Button size="sm" onclick={() => goto('/settings/github-app')}>
+									<GithubMark class="h-3.5 w-3.5" />
+									Set up the GitHub App
+									<ArrowRight class="h-3.5 w-3.5" />
 								</Button>
 							</div>
 						{/if}
 					</div>
 				</li>
 				<li class="flex items-start gap-3">
-					<span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full {summary.appCount > 0 ? 'bg-teal-600 text-white' : 'bg-zinc-200 text-zinc-700'} text-xs font-bold">
-						{summary.appCount > 0 ? '✓' : '2'}
-					</span>
+					{#if summary.appCount > 0}
+						<CheckCircle2 class="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-success)]" />
+					{:else}
+						<Circle class="mt-0.5 h-5 w-5 shrink-0 text-[var(--color-fg-subtle)]" />
+					{/if}
 					<div class="flex-1">
-						<div class="font-medium text-zinc-800">
+						<div class="flex flex-wrap items-baseline gap-2 font-medium text-[var(--color-fg)]">
 							Create your first app
 							{#if summary.appCount > 0}
-								<span class="ml-1 text-xs font-normal text-teal-700">— {summary.appCount} configured</span>
+								<Badge tone="success" size="sm">{summary.appCount} configured</Badge>
 							{/if}
 						</div>
-						<p class="text-xs text-zinc-500">
+						<p class="mt-0.5 text-xs text-[var(--color-fg-muted)]">
 							Pick a repo from the dropdown — Teal handles the rest.
 						</p>
 						{#if summary.appCount === 0 && summary.githubAppConfigured}
-							<div class="mt-2">
-								<Button onclick={() => goto('/apps/new')}>
-									New app →
+							<div class="mt-3">
+								<Button size="sm" onclick={() => goto('/apps/new')}>
+									<Plus class="h-3.5 w-3.5" />
+									New app
+									<ArrowRight class="h-3.5 w-3.5" />
 								</Button>
 							</div>
 						{/if}
@@ -117,38 +164,53 @@
 	{/if}
 
 	{#if summary}
-		<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-			<Card>
-				<div class="text-xs uppercase tracking-wide text-zinc-500">Apps</div>
-				<div class="mt-1 text-2xl font-semibold text-zinc-900">{summary.appCount}</div>
-			</Card>
-			<Card>
-				<div class="text-xs uppercase tracking-wide text-zinc-500">Running containers</div>
-				<div class="mt-1 text-2xl font-semibold text-zinc-900">{summary.runningContainers}</div>
-			</Card>
-			<Card>
-				<div class="text-xs uppercase tracking-wide text-zinc-500">Workdir on disk</div>
-				<div class="mt-1 text-2xl font-semibold text-zinc-900">{fmtBytes(summary.workdirDiskBytes)}</div>
-			</Card>
-			<Card>
-				<div class="text-xs uppercase tracking-wide text-zinc-500">Recent failures</div>
-				<div class="mt-1 text-2xl font-semibold text-zinc-900">{summary.recentFailures.length}</div>
-			</Card>
+		<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+			{#each statsList as stat}
+				{@const Icon = stat.icon}
+				<div
+					class="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[var(--shadow-card)]"
+				>
+					<div class="flex items-start justify-between">
+						<div>
+							<div
+								class="text-[11px] font-medium uppercase tracking-wide text-[var(--color-fg-subtle)]"
+							>
+								{stat.label}
+							</div>
+							<div class="mt-1.5 text-2xl font-semibold text-[var(--color-fg)]">
+								{stat.value()}
+							</div>
+						</div>
+						<div
+							class="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-surface-muted)] text-[var(--color-fg-muted)]"
+						>
+							<Icon class="h-4 w-4" />
+						</div>
+					</div>
+				</div>
+			{/each}
 		</div>
 
 		{#if summary.recentFailures.length > 0}
 			<Card title="Recent deploy failures">
-				<ul class="divide-y divide-zinc-100 text-sm">
+				<ul class="divide-y divide-[var(--color-border)] text-sm">
 					{#each summary.recentFailures as f}
-						<li class="flex items-center justify-between py-2">
-							<div>
-								<a class="font-medium text-zinc-800 hover:text-teal-700" href={`/apps/${f.appSlug}`}>
+						<li class="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+							<div class="min-w-0">
+								<a
+									class="font-medium text-[var(--color-fg)] no-underline hover:text-[var(--color-accent)]"
+									href={`/apps/${f.appSlug}`}
+								>
 									{f.appSlug}
 								</a>
-								<span class="ml-2 text-xs text-zinc-500">#{f.deploymentId}</span>
-								<div class="text-xs text-red-600">{f.failureReason || '(no reason recorded)'}</div>
+								<span class="ml-1.5 font-mono text-xs text-[var(--color-fg-subtle)]">
+									#{f.deploymentId}
+								</span>
+								<div class="mt-0.5 truncate text-xs text-[var(--color-danger)]">
+									{f.failureReason || '(no reason recorded)'}
+								</div>
 							</div>
-							<div class="text-xs text-zinc-400">
+							<div class="shrink-0 text-xs text-[var(--color-fg-subtle)]">
 								{f.completedAt ? new Date(f.completedAt).toLocaleString() : '—'}
 							</div>
 						</li>
@@ -159,37 +221,48 @@
 	{/if}
 
 	{#if loading}
-		<div class="text-sm text-zinc-500">Loading apps…</div>
+		<div class="text-sm text-[var(--color-fg-muted)]">Loading apps…</div>
 	{:else if error}
-		<div class="text-sm text-red-600">{error}</div>
+		<div class="text-sm text-[var(--color-danger)]">{error}</div>
 	{:else if apps.length === 0}
-		<Card title="No apps yet">
-			<p class="text-sm text-zinc-600">
-				Add your first docker-compose app to start getting zero-downtime deploys.
-			</p>
-			<div class="mt-4">
-				<Button onclick={() => goto('/apps/new')}>Create your first app</Button>
-			</div>
-		</Card>
+		<EmptyState
+			icon={Boxes}
+			title="No apps yet"
+			description="Add your first docker-compose app to start getting zero-downtime deploys."
+		>
+			{#snippet action()}
+				<Button onclick={() => goto('/apps/new')}>
+					<Plus class="h-4 w-4" />
+					Create your first app
+				</Button>
+			{/snippet}
+		</EmptyState>
 	{:else}
-		<Card>
+		<Card padded={false}>
 			<table class="w-full text-sm">
-				<thead class="text-left text-xs uppercase text-zinc-500">
-					<tr>
-						<th class="pb-2">App</th>
-						<th class="pb-2">Status</th>
-						<th class="pb-2">Active color</th>
-						<th class="pb-2">Commit</th>
-						<th class="pb-2">Domains</th>
-						<th class="pb-2"></th>
+				<thead
+					class="text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+				>
+					<tr class="border-b border-[var(--color-border)]">
+						<th class="px-5 py-2.5">App</th>
+						<th class="px-5 py-2.5">Status</th>
+						<th class="px-5 py-2.5">Color</th>
+						<th class="px-5 py-2.5">Commit</th>
+						<th class="px-5 py-2.5">URLs</th>
+						<th class="px-5 py-2.5"></th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each apps as app}
-						<tr class="border-t border-zinc-100">
-							<td class="py-2">
+						<tr
+							class="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg-subtle)]"
+						>
+							<td class="px-5 py-3">
 								<div class="flex items-center gap-2">
-									<a class="font-medium text-zinc-800 hover:text-teal-700" href={`/apps/${app.slug}`}>
+									<a
+										class="font-medium text-[var(--color-fg)] no-underline hover:text-[var(--color-accent)]"
+										href={`/apps/${app.slug}`}
+									>
 										{app.name}
 									</a>
 									{#if dirty.has(app.slug)}
@@ -199,34 +272,46 @@
 										></span>
 									{/if}
 								</div>
-								<div class="text-xs text-zinc-400">{app.slug}</div>
+								<div class="mt-0.5 font-mono text-xs text-[var(--color-fg-subtle)]">
+									{app.slug}
+								</div>
 							</td>
-							<td class="py-2">
-								<span class="rounded-full px-2 py-0.5 text-xs {statusClass[app.status]}">
+							<td class="px-5 py-3">
+								<Badge tone={statusTone[app.status]} size="sm">
+									<StatusDot tone={statusTone[app.status]} pulse={app.status === 'deploying'} />
 									{app.status}
-								</span>
+								</Badge>
 							</td>
-							<td class="py-2 text-zinc-600">{app.activeColor || '—'}</td>
-							<td class="py-2 font-mono text-xs text-zinc-600">
+							<td class="px-5 py-3 text-[var(--color-fg-muted)]">{app.activeColor || '—'}</td>
+							<td class="px-5 py-3 font-mono text-xs text-[var(--color-fg-muted)]">
 								{app.lastDeployedCommitSha ? app.lastDeployedCommitSha.slice(0, 7) : '—'}
 							</td>
-							<td class="py-2 text-zinc-600">
-								{#if app.domains.length === 0}
-									—
+							<td class="px-5 py-3 text-[var(--color-fg-muted)]">
+								{#if (app.routes ?? []).length === 0}
+									<span class="text-[var(--color-fg-subtle)]">—</span>
 								{:else}
-									{#each app.domains as d, i}{#if i > 0}, {/if}<a
-											class="text-teal-700 hover:underline"
-											href={`https://${d}`}
-											target="_blank"
-											rel="noopener"
-											onclick={(e) => e.stopPropagation()}
-										>{d}</a
-										>{/each}
+									<div class="flex flex-wrap gap-x-3 gap-y-1">
+										{#each app.routes as r}
+											<a
+												class="text-xs text-[var(--color-accent)] hover:underline"
+												href={`https://${r.domain}`}
+												target="_blank"
+												rel="noopener"
+												onclick={(e) => e.stopPropagation()}
+											>
+												{r.domain}
+											</a>
+										{/each}
+									</div>
 								{/if}
 							</td>
-							<td class="py-2 text-right">
-								<a class="text-sm text-teal-700 hover:underline" href={`/apps/${app.slug}`}>
-									Open →
+							<td class="px-5 py-3 text-right">
+								<a
+									class="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-accent)] hover:underline"
+									href={`/apps/${app.slug}`}
+								>
+									Open
+									<ArrowRight class="h-3 w-3" />
 								</a>
 							</td>
 						</tr>

@@ -21,6 +21,10 @@
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import Badge from '$lib/components/Badge.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import GithubMark from '$lib/components/GithubMark.svelte';
+	import { ArrowRight, ExternalLink, ChevronDown, ChevronRight } from '@lucide/svelte';
 
 	let cfg = $state<GitHubAppConfig | null>(null);
 	let appId = $state('');
@@ -120,64 +124,85 @@
 </script>
 
 <div class="space-y-6">
-	<div>
-		<h1 class="text-2xl font-semibold text-zinc-900">GitHub App</h1>
-		<p class="mt-1 text-sm text-zinc-500">
-			Configure the platform-wide GitHub App. Apps installed on this App can be deployed without
-			deploy keys or PATs. Admin only.
-		</p>
-	</div>
+	<PageHeader
+		title="GitHub App"
+		description="Configure the platform-wide GitHub App. Apps installed on it deploy without deploy keys or PATs. Admin only."
+	/>
 
 	{#if createdSlug}
 		<Card title="App created — install it on a repo next">
-			<p class="text-sm text-zinc-700">
+			<p class="text-sm text-[var(--color-fg)]">
 				The platform GitHub App
-				<code class="rounded bg-zinc-100 px-1.5 py-0.5">{createdSlug}</code>
+				<code class="rounded bg-[var(--color-bg-subtle)] px-1.5 py-0.5 font-mono">
+					{createdSlug}
+				</code>
 				was created and Teal stored its credentials. Open the install page on GitHub, pick which
 				repositories Teal should access, and you're ready to deploy.
 			</p>
-			<div class="mt-3 flex justify-end gap-2">
-				<a
-					class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-sm font-medium text-white hover:bg-teal-700"
-					href={`https://github.com/apps/${createdSlug}/installations/new`}
-					target="_blank"
-					rel="noopener"
+			<div class="mt-4 flex justify-end gap-2">
+				<Button variant="ghost" onclick={() => (createdSlug = null)}>Dismiss</Button>
+				<Button
+					onclick={() =>
+						window.open(
+							`https://github.com/apps/${createdSlug}/installations/new`,
+							'_blank',
+							'noopener'
+						)}
 				>
-					Install on a repo →
-				</a>
-				<Button variant="secondary" onclick={() => (createdSlug = null)}>Dismiss</Button>
+					<GithubMark class="h-4 w-4" />
+					Install on a repo
+					<ArrowRight class="h-4 w-4" />
+				</Button>
 			</div>
 		</Card>
 	{/if}
 
 	{#if cfg && cfg.appId > 0 && cfg.hasPrivateKey}
 		<Card title="App is configured">
-			<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm text-zinc-700">
-				<dt class="text-zinc-500">App ID</dt><dd class="font-mono">{cfg.appId}</dd>
-				<dt class="text-zinc-500">Slug</dt><dd class="font-mono">{cfg.appSlug || '—'}</dd>
-				<dt class="text-zinc-500">Private key</dt><dd>{cfg.hasPrivateKey ? '✓ stored' : '—'}</dd>
-				<dt class="text-zinc-500">Webhook secret</dt><dd>{cfg.hasWebhookSecret ? '✓ stored' : '—'}</dd>
+			{#snippet actions()}
+				<Badge tone="success">connected</Badge>
+			{/snippet}
+			<dl class="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+				<dt class="text-[var(--color-fg-muted)]">App ID</dt>
+				<dd class="font-mono text-[var(--color-fg)]">{cfg.appId}</dd>
+				<dt class="text-[var(--color-fg-muted)]">Slug</dt>
+				<dd class="font-mono text-[var(--color-fg)]">{cfg.appSlug || '—'}</dd>
+				<dt class="text-[var(--color-fg-muted)]">Private key</dt>
+				<dd>
+					{#if cfg.hasPrivateKey}
+						<Badge tone="success" size="sm">stored</Badge>
+					{:else}—{/if}
+				</dd>
+				<dt class="text-[var(--color-fg-muted)]">Webhook secret</dt>
+				<dd>
+					{#if cfg.hasWebhookSecret}
+						<Badge tone="success" size="sm">stored</Badge>
+					{:else}—{/if}
+				</dd>
 			</dl>
 			{#if cfg.appSlug}
-				<div class="mt-3">
-					<a
-						class="text-sm text-teal-700 hover:underline"
-						href={`https://github.com/apps/${cfg.appSlug}/installations/new`}
-						target="_blank"
-						rel="noopener"
+				<div class="mt-4">
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={() =>
+							window.open(
+								`https://github.com/apps/${cfg!.appSlug}/installations/new`,
+								'_blank',
+								'noopener'
+							)}
 					>
-						Install / manage on more repos →
-					</a>
+						<ExternalLink class="h-3.5 w-3.5" />
+						Install / manage on more repos
+					</Button>
 				</div>
 			{/if}
 		</Card>
 	{:else}
-		<Card title="Create the platform GitHub App">
-			<p class="mb-3 text-sm text-zinc-600">
-				One-click setup: Teal generates a GitHub App manifest with the right permissions,
-				webhook URL, and post-create callback. Click the button, confirm on GitHub, and you're
-				done — no copy-pasting App IDs or private keys.
-			</p>
+		<Card
+			title="Create the platform GitHub App"
+			description="One-click setup: Teal generates a manifest with the right permissions and callback. Confirm on GitHub, no copy-pasting."
+		>
 			<form
 				class="space-y-3"
 				onsubmit={(e) => {
@@ -186,22 +211,28 @@
 				}}
 			>
 				<div>
-					<label for="org" class="mb-1 block text-sm font-medium text-zinc-700">
+					<label for="org" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 						Create under organization
-						<span class="text-zinc-400">(optional)</span>
+						<span class="text-[var(--color-fg-subtle)]">(optional)</span>
 					</label>
-					<Input id="org" bind:value={orgSlug} placeholder="leave empty to create under your user account" />
-					<p class="mt-1 text-xs text-zinc-500">
-						If set, you must be an admin of the organization (or have the right permission).
-						Otherwise GitHub will create the App under your personal account.
+					<Input
+						id="org"
+						bind:value={orgSlug}
+						placeholder="leave empty to create under your user account"
+					/>
+					<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+						If set, you must be an admin of the organization. Otherwise GitHub will create the
+						App under your personal account.
 					</p>
 				</div>
 				{#if manifestError}
-					<div class="text-sm text-red-600">{manifestError}</div>
+					<div class="text-sm text-[var(--color-danger)]">{manifestError}</div>
 				{/if}
 				<div class="flex justify-end">
 					<Button type="submit" disabled={manifestSubmitting}>
-						{manifestSubmitting ? 'Redirecting to GitHub…' : 'Create with one click →'}
+						<GithubMark class="h-4 w-4" />
+						{manifestSubmitting ? 'Redirecting to GitHub…' : 'Create with one click'}
+						<ArrowRight class="h-4 w-4" />
 					</Button>
 				</div>
 			</form>
@@ -211,22 +242,32 @@
 	<div>
 		<button
 			type="button"
-			class="text-xs text-zinc-500 underline hover:text-zinc-800"
+			class="inline-flex items-center gap-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
 			onclick={() => (showManual = !showManual)}
 		>
-			{showManual ? 'Hide' : 'Show'} manual setup (re-using an existing App, or for offline installs)
+			{#if showManual}
+				<ChevronDown class="h-3 w-3" />
+			{:else}
+				<ChevronRight class="h-3 w-3" />
+			{/if}
+			Manual setup (re-use an existing App, or for offline installs)
 		</button>
 	</div>
 
 	{#if showManual}
 		<Card title="Manual setup steps (one-time)">
-			<ol class="list-decimal space-y-2 pl-5 text-sm text-zinc-700">
+			<ol class="list-decimal space-y-2 pl-5 text-sm text-[var(--color-fg)]">
 				<li>
 					Go to
-					<a class="text-teal-700 underline" target="_blank" rel="noopener" href="https://github.com/settings/apps/new">
-						https://github.com/settings/apps/new
+					<a
+						class="text-[var(--color-accent)] underline"
+						target="_blank"
+						rel="noopener"
+						href="https://github.com/settings/apps/new"
+					>
+						github.com/settings/apps/new
 					</a>
-					and fill in the App's settings to match Teal's expectations.
+					and fill in the App's settings.
 				</li>
 				<li>
 					Set the <strong>Webhook URL</strong> to your Teal hostname +
@@ -234,19 +275,19 @@
 					<code>openssl rand -hex 32</code>.
 				</li>
 				<li>
-					Set permissions: <strong>Contents: Read</strong>, <strong>Metadata: Read</strong>.
-					Subscribe to the <strong>Push</strong> event.
+					Set permissions: <strong>Contents: Read</strong>,
+					<strong>Metadata: Read</strong>. Subscribe to the <strong>Push</strong> event.
 				</li>
 				<li>
-					After creating, copy <strong>App ID</strong>, <strong>App slug</strong>, and download a
-					private key PEM. Paste all three below.
+					Copy <strong>App ID</strong>, <strong>App slug</strong>, and download a private key PEM.
+					Paste all three below.
 				</li>
 			</ol>
 		</Card>
 
 		<Card title="Credentials">
 			{#if loading}
-				<div class="text-sm text-zinc-500">Loading…</div>
+				<div class="text-sm text-[var(--color-fg-muted)]">Loading…</div>
 			{:else}
 				<form
 					class="space-y-4"
@@ -255,36 +296,49 @@
 						void save();
 					}}
 				>
-					<div class="grid grid-cols-2 gap-4">
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div>
-							<label for="appid" class="mb-1 block text-sm font-medium text-zinc-700">App ID</label>
-							<Input id="appid" bind:value={appId} placeholder="123456" />
+							<label for="appid" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+								App ID
+							</label>
+							<Input id="appid" bind:value={appId} placeholder="123456" mono />
 						</div>
 						<div>
-							<label for="appslug" class="mb-1 block text-sm font-medium text-zinc-700">App slug</label>
-							<Input id="appslug" bind:value={appSlug} placeholder="teal-platform" />
+							<label
+								for="appslug"
+								class="mb-1 block text-sm font-medium text-[var(--color-fg)]"
+							>
+								App slug
+							</label>
+							<Input id="appslug" bind:value={appSlug} placeholder="teal-platform" mono />
 						</div>
 					</div>
 					<div>
-						<label for="pem" class="mb-1 block text-sm font-medium text-zinc-700">
+						<label for="pem" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 							Private key PEM
 							{#if cfg?.hasPrivateKey}
-								<span class="ml-1 text-xs text-zinc-500">(stored — paste a new key to rotate)</span>
+								<span class="ml-1 text-xs text-[var(--color-fg-subtle)]">
+									(stored — paste a new key to rotate)
+								</span>
 							{/if}
 						</label>
 						<textarea
 							id="pem"
 							rows="8"
 							bind:value={privateKey}
-							placeholder={cfg?.hasPrivateKey ? '(leave empty to keep existing)' : '-----BEGIN RSA PRIVATE KEY-----\n…'}
-							class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+							placeholder={cfg?.hasPrivateKey
+								? '(leave empty to keep existing)'
+								: '-----BEGIN RSA PRIVATE KEY-----\n…'}
+							class="block w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg)] px-3 py-2 font-mono text-xs text-[var(--color-fg)] hover:border-[var(--color-fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
 						></textarea>
 					</div>
 					<div>
-						<label for="whsec" class="mb-1 block text-sm font-medium text-zinc-700">
+						<label for="whsec" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 							Webhook secret
 							{#if cfg?.hasWebhookSecret}
-								<span class="ml-1 text-xs text-zinc-500">(stored — paste a new value to rotate)</span>
+								<span class="ml-1 text-xs text-[var(--color-fg-subtle)]">
+									(stored — paste a new value to rotate)
+								</span>
 							{/if}
 						</label>
 						<Input
@@ -295,10 +349,10 @@
 						/>
 					</div>
 					{#if error}
-						<div class="text-sm text-red-600">{error}</div>
+						<div class="text-sm text-[var(--color-danger)]">{error}</div>
 					{/if}
 					{#if saved}
-						<div class="text-sm text-teal-700">Saved.</div>
+						<div class="text-sm text-[var(--color-success)]">Saved.</div>
 					{/if}
 					<div class="flex justify-end">
 						<Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>

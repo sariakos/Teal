@@ -1,12 +1,10 @@
 <script lang="ts">
 	/*
-	 * New app form. Two modes: "Connect git repo" (recommended — Teal
-	 * clones at deploy time and reads compose from the repo) and "Paste
-	 * compose" (advanced/quick — paste a docker-compose.yml directly).
-	 *
-	 * On submit with git mode, the backend may generate an SSH deploy
-	 * key + a webhook secret. Both are returned ONCE in the response;
-	 * we hold the user on this page until they've copied them.
+	 * New app form. Two modes: "Connect git repo" (recommended) and "Paste
+	 * compose" (advanced). On submit with git mode, the backend may
+	 * generate an SSH deploy key + a webhook secret. Both are returned
+	 * ONCE in the response; we hold the user on this page until they've
+	 * copied them.
 	 */
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -17,6 +15,11 @@
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import GithubMark from '$lib/components/GithubMark.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { Copy, ArrowRight, GitBranch, FileCode2 } from '@lucide/svelte';
 
 	type Mode = 'git' | 'compose';
 	let mode = $state<Mode>('git');
@@ -26,13 +29,11 @@
 	let branch = $state('main');
 	let autoDeploy = $state(true);
 
-	// Git mode
 	let gitUrl = $state('');
 	let gitAuthKind = $state<GitAuthKind>('github_app');
 	let gitCredential = $state('');
 	let gitComposePath = $state('docker-compose.yml');
 
-	// Compose mode
 	let composeFile = $state(`services:
   web:
     image: nginx:alpine
@@ -43,16 +44,11 @@
 	let error = $state<string | null>(null);
 	let submitting = $state(false);
 
-	// One-shot reveals the user must copy before navigating away.
 	let revealedSecret = $state<string | null>(null);
 	let revealedPublicKey = $state<string | null>(null);
 	let revealedFingerprint = $state<string | null>(null);
 	let createdSlug = $state<string | null>(null);
 
-	// GitHub App repo picker. Loaded once on mount; stays null when
-	// the platform App isn't configured (we just hide the picker
-	// then). Selection encoded as "<installationId>::<full_name>::<defaultBranch>"
-	// so a single <select> carries everything we need to prefill.
 	let ghaRepos = $state<AppReposResponse | null>(null);
 	let ghaReposLoading = $state(true);
 	let selectedRepoKey = $state('');
@@ -60,12 +56,9 @@
 	function pickRepo(value: string) {
 		selectedRepoKey = value;
 		if (!value) return;
-		const [_, fullName, defaultBranch] = value.split('::');
+		const [, fullName, defaultBranch] = value.split('::');
 		if (!fullName) return;
 		const last = fullName.split('/').pop() ?? fullName;
-		// Prefill from the repo name. The user can still edit before
-		// submitting; slugTouched stays false unless they actually
-		// type into the slug field.
 		name = last;
 		slugTouched = false;
 		gitUrl = `https://github.com/${fullName}.git`;
@@ -99,16 +92,12 @@
 					repoFullName = fullName;
 				}
 			}
-			// Per-service Routes are configured on the app's Settings tab
-			// after first deploy (so we know which services exist). The
-			// new-app form just creates the app shell; routing comes
-			// later. domains:[] keeps the wire shape consistent.
 			const payload =
 				mode === 'git'
 					? {
 							slug,
 							name,
-							composeFile: '', // engine reads from git
+							composeFile: '',
 							domains: [],
 							autoDeployBranch: branch,
 							autoDeployEnabled: autoDeploy,
@@ -137,8 +126,8 @@
 			if (resp.newWebhookSecret) {
 				revealedSecret = resp.newWebhookSecret;
 			}
-			// If nothing to reveal, jump straight to the app detail page.
 			if (!revealedPublicKey && !revealedSecret) {
+				toast.success(`App "${resp.slug}" created`);
 				goto(`/apps/${resp.slug}`);
 			}
 		} catch (err) {
@@ -150,6 +139,7 @@
 
 	function copyToClipboard(s: string) {
 		void navigator.clipboard.writeText(s).catch(() => {});
+		toast.success('Copied to clipboard', { duration: 1500 });
 	}
 
 	function continueToApp() {
@@ -169,65 +159,84 @@
 			ghaReposLoading = false;
 		}
 	});
+
+	const modes: { value: Mode; label: string; icon: typeof GitBranch }[] = [
+		{ value: 'git', label: 'Connect git repo', icon: GitBranch },
+		{ value: 'compose', label: 'Paste compose', icon: FileCode2 }
+	];
 </script>
 
 <div class="mx-auto max-w-3xl space-y-6">
-	<div>
-		<h1 class="text-2xl font-semibold text-zinc-900">New app</h1>
-		<p class="mt-1 text-sm text-zinc-500">
-			Connect a git repo (recommended) — Teal clones it on every deploy and reads the compose file
-			straight from the source. Or paste a compose inline if you don't have a repo yet.
-		</p>
-	</div>
+	<PageHeader
+		title="New app"
+		description="Connect a git repo (recommended) — Teal clones it on every deploy and reads compose from source. Or paste a compose inline."
+	/>
 
 	{#if revealedPublicKey || revealedSecret}
-		<!-- Secrets reveal panel: held here until user clicks Continue. -->
 		<Card title="Copy these now — they will not be shown again">
 			{#if revealedPublicKey}
 				<div class="mb-4">
-					<p class="mb-2 text-sm font-medium text-zinc-700">SSH deploy key (public)</p>
-					<p class="mb-2 text-xs text-zinc-500">
+					<p class="mb-1 text-sm font-semibold text-[var(--color-fg)]">SSH deploy key</p>
+					<p class="mb-2 text-xs text-[var(--color-fg-muted)]">
 						Paste into GitHub → repo → <strong>Settings → Deploy keys</strong> → Add deploy key.
 						Read access is enough.
 					</p>
 					<div class="flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800"
-							>{revealedPublicKey}</code
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--color-fg)]"
 						>
+							{revealedPublicKey}
+						</code>
 						<Button variant="secondary" onclick={() => copyToClipboard(revealedPublicKey!)}>
+							<Copy class="h-4 w-4" />
 							Copy
 						</Button>
 					</div>
 					{#if revealedFingerprint}
-						<p class="mt-2 font-mono text-xs text-zinc-500">Fingerprint: {revealedFingerprint}</p>
+						<p class="mt-2 font-mono text-xs text-[var(--color-fg-muted)]">
+							Fingerprint: {revealedFingerprint}
+						</p>
 					{/if}
 				</div>
 			{/if}
 			{#if revealedSecret}
 				<div>
-					<p class="mb-2 text-sm font-medium text-zinc-700">Webhook secret</p>
-					<p class="mb-2 text-xs text-zinc-500">
+					<p class="mb-1 text-sm font-semibold text-[var(--color-fg)]">Webhook secret</p>
+					<p class="mb-2 text-xs text-[var(--color-fg-muted)]">
 						In GitHub → <strong>Settings → Webhooks</strong> → Add webhook, set Payload URL to:
 					</p>
-					<div class="mb-2 flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800"
-							>{webhookURL}</code
+					<div class="mb-3 flex items-center gap-2">
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--color-fg)]"
 						>
-						<Button variant="secondary" onclick={() => copyToClipboard(webhookURL)}>Copy</Button>
+							{webhookURL}
+						</code>
+						<Button variant="secondary" onclick={() => copyToClipboard(webhookURL)}>
+							<Copy class="h-4 w-4" />
+							Copy
+						</Button>
 					</div>
-					<p class="mb-2 text-xs text-zinc-500">Content type <code>application/json</code>. Secret:</p>
+					<p class="mb-2 text-xs text-[var(--color-fg-muted)]">
+						Content type <code>application/json</code>. Secret:
+					</p>
 					<div class="flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-900 px-3 py-2 font-mono text-sm text-teal-300"
-							>{revealedSecret}</code
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-fg)] px-3 py-2 font-mono text-sm text-[var(--color-accent)]"
 						>
+							{revealedSecret}
+						</code>
 						<Button variant="secondary" onclick={() => copyToClipboard(revealedSecret!)}>
+							<Copy class="h-4 w-4" />
 							Copy
 						</Button>
 					</div>
 				</div>
 			{/if}
-			<div class="mt-4 flex justify-end">
-				<Button onclick={continueToApp}>I've copied them — continue</Button>
+			<div class="mt-5 flex justify-end">
+				<Button onclick={continueToApp}>
+					I've copied them — continue
+					<ArrowRight class="h-4 w-4" />
+				</Button>
 			</div>
 		</Card>
 	{:else}
@@ -236,65 +245,72 @@
 				<!-- SOURCE first. Picking a repo here can mutate name/slug
 				     below; nothing visually jumps "above" the input the
 				     user just touched. -->
-				<div class="flex gap-2 border-b border-zinc-200">
-					<button
-						type="button"
-						class="border-b-2 px-3 pb-2 text-sm {mode === 'git'
-							? 'border-teal-600 font-medium text-teal-700'
-							: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-						onclick={() => (mode = 'git')}
-					>
-						Connect git repo
-					</button>
-					<button
-						type="button"
-						class="border-b-2 px-3 pb-2 text-sm {mode === 'compose'
-							? 'border-teal-600 font-medium text-teal-700'
-							: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-						onclick={() => (mode = 'compose')}
-					>
-						Paste compose
-					</button>
+				<div class="flex gap-1 rounded-lg bg-[var(--color-bg-subtle)] p-1">
+					{#each modes as m}
+						{@const Icon = m.icon}
+						<button
+							type="button"
+							onclick={() => (mode = m.value)}
+							class="flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors {mode ===
+							m.value
+								? 'bg-[var(--color-surface)] font-medium text-[var(--color-fg)] shadow-[var(--shadow-xs)]'
+								: 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'}"
+						>
+							<Icon class="h-4 w-4" />
+							{m.label}
+						</button>
+					{/each}
 				</div>
 
 				{#if mode === 'git'}
 					{#if ghaRepos && ghaRepos.configured && ghaRepos.installations.some((i) => i.repos.length > 0)}
-						<div class="rounded-md border border-teal-200 bg-teal-50 p-3">
-							<label for="repoPick" class="mb-1 block text-sm font-medium text-teal-900">
+						<div
+							class="rounded-lg border border-[var(--color-accent-soft)] bg-[var(--color-accent-soft)] p-3"
+						>
+							<label
+								for="repoPick"
+								class="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--color-accent-soft-fg)]"
+							>
+								<GithubMark class="h-3.5 w-3.5" />
 								Pick a connected repo (recommended)
 							</label>
-							<select
+							<Select
 								id="repoPick"
 								value={selectedRepoKey}
 								onchange={(e) => pickRepo((e.currentTarget as HTMLSelectElement).value)}
-								class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
 							>
 								<option value="">— or fill in manually below —</option>
 								{#each ghaRepos.installations as inst (inst.installationId)}
 									{#if inst.repos.length > 0}
 										<optgroup label={inst.accountLogin}>
 											{#each inst.repos as r (r.fullName)}
-												<option value={`${inst.installationId}::${r.fullName}::${r.defaultBranch}`}>
+												<option
+													value={`${inst.installationId}::${r.fullName}::${r.defaultBranch}`}
+												>
 													{r.fullName}{r.private ? ' 🔒' : ''}
 												</option>
 											{/each}
 										</optgroup>
 									{/if}
 								{/each}
-							</select>
-							<p class="mt-1 text-xs text-teal-800">
-								Picking a repo prefills name, slug, branch, git URL and links the GitHub
-								App installation in one save.
+							</Select>
+							<p class="mt-2 text-xs text-[var(--color-accent-soft-fg)] opacity-80">
+								Picking a repo prefills name, slug, branch, git URL and links the GitHub App
+								installation in one save.
 							</p>
 						</div>
 					{:else if ghaRepos && !ghaRepos.configured && !ghaReposLoading}
-						<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+						<div
+							class="rounded-lg border border-[var(--color-warning-soft)] bg-[var(--color-warning-soft)] p-3 text-sm text-[var(--color-warning-soft-fg)]"
+						>
 							The platform GitHub App isn't configured yet — set it up at
 							<a class="underline" href="/settings/github-app">Settings → GitHub App</a>
 							to get a one-click repo picker here. You can still fill in the form manually.
 						</div>
 					{:else if ghaRepos && ghaRepos.configured && ghaRepos.installations.length === 0}
-						<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+						<div
+							class="rounded-lg border border-[var(--color-warning-soft)] bg-[var(--color-warning-soft)] p-3 text-sm text-[var(--color-warning-soft-fg)]"
+						>
 							The platform GitHub App is configured but isn't installed on any repo yet.
 							{#if ghaRepos.appSlug}
 								<a
@@ -310,14 +326,16 @@
 					{/if}
 				{/if}
 
-				<div class="grid grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<label for="name" class="mb-1 block text-sm font-medium text-zinc-700">Name</label>
+						<label for="name" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+							Name
+						</label>
 						<Input id="name" required bind:value={name} placeholder="My App" />
 					</div>
 					<div>
-						<label for="slug" class="mb-1 block text-sm font-medium text-zinc-700">
-							Slug (used in compose project name)
+						<label for="slug" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+							Slug
 						</label>
 						<input
 							id="slug"
@@ -325,15 +343,18 @@
 							bind:value={slug}
 							oninput={() => (slugTouched = true)}
 							placeholder="my-app"
-							class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+							class="block w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg)] px-3 py-2 font-mono text-sm text-[var(--color-fg)] hover:border-[var(--color-fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
 						/>
+						<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+							Used in the compose project name and URLs.
+						</p>
 					</div>
 				</div>
 
 				{#if mode === 'git'}
 					<div class="space-y-4">
 						<div>
-							<label for="giturl" class="mb-1 block text-sm font-medium text-zinc-700">
+							<label for="giturl" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 								Git URL
 							</label>
 							<Input
@@ -342,87 +363,106 @@
 								bind:value={gitUrl}
 								placeholder="git@github.com:owner/repo.git"
 							/>
-							<p class="mt-1 text-xs text-zinc-500">
-								Use the SSH URL for private repos with deploy keys, or the https URL for PAT / public.
+							<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+								Use SSH for private repos with deploy keys, or https for PAT / public.
 							</p>
 						</div>
-						<div class="grid grid-cols-2 gap-4">
+						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 							<div>
-								<label for="branch" class="mb-1 block text-sm font-medium text-zinc-700">
+								<label
+									for="branch"
+									class="mb-1 block text-sm font-medium text-[var(--color-fg)]"
+								>
 									Branch
 								</label>
 								<Input id="branch" bind:value={branch} placeholder="main" />
 							</div>
 							<div>
-								<label for="path" class="mb-1 block text-sm font-medium text-zinc-700">
+								<label for="path" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 									Compose path in repo
 								</label>
-								<Input id="path" bind:value={gitComposePath} placeholder="docker-compose.yml" />
+								<Input
+									id="path"
+									bind:value={gitComposePath}
+									placeholder="docker-compose.yml"
+									mono
+								/>
 							</div>
 						</div>
 						<div>
-							<label for="auth" class="mb-1 block text-sm font-medium text-zinc-700">
+							<label for="auth" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 								Authentication
 							</label>
-							<select
-								id="auth"
-								bind:value={gitAuthKind}
-								class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
-							>
-								<option value="github_app">GitHub App (recommended; install on the repo after save)</option>
+							<Select id="auth" bind:value={gitAuthKind}>
+								<option value="github_app">GitHub App (recommended)</option>
 								<option value="ssh">SSH deploy key (Teal generates a keypair)</option>
 								<option value="pat">Personal access token</option>
 								<option value="">Public repo (no auth)</option>
-							</select>
-							<p class="mt-1 text-xs text-zinc-500">
+							</Select>
+							<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
 								{#if gitAuthKind === 'github_app'}
-									Save the app, then click <strong>Install on a repo</strong> on its Settings tab to grant
-									access — short-lived tokens, no key copying. Requires the platform GitHub App to be
-									configured at <code>/settings/github-app</code>.
+									Save the app, then click <strong>Install on a repo</strong> on its Settings tab to
+									grant access — short-lived tokens, no key copying. Requires the platform GitHub App to
+									be configured at <code>/settings/github-app</code>.
 								{:else if gitAuthKind === 'ssh'}
-									After save, copy the public key shown and paste it into your GitHub repo → Settings → Deploy keys.
+									After save, copy the public key shown and paste it into your GitHub repo →
+									Settings → Deploy keys.
 								{:else if gitAuthKind === 'pat'}
-									Generate a fine-grained PAT in GitHub with read access to this repo, then paste it below.
+									Generate a fine-grained PAT in GitHub with read access to this repo, then paste
+									it below.
 								{:else}
-									Public repos clone over https without auth — make sure the URL starts with <code>https://</code>.
+									Public repos clone over https without auth — make sure the URL starts with
+									<code>https://</code>.
 								{/if}
 							</p>
 						</div>
 						{#if gitAuthKind === 'pat'}
 							<div>
-								<label for="cred" class="mb-1 block text-sm font-medium text-zinc-700">
+								<label for="cred" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 									Personal access token
 								</label>
-								<Input id="cred" type="password" required bind:value={gitCredential} placeholder="ghp_…" />
+								<Input
+									id="cred"
+									type="password"
+									required
+									bind:value={gitCredential}
+									placeholder="ghp_…"
+								/>
 							</div>
 						{/if}
-						<label class="flex items-center gap-2 text-sm text-zinc-700">
-							<input type="checkbox" bind:checked={autoDeploy} />
-							Auto-deploy on push to <code class="ml-1">{branch}</code> (you can configure the GitHub
-							webhook later from the app's Settings tab)
+						<label class="flex items-center gap-2 text-sm text-[var(--color-fg)]">
+							<input
+								type="checkbox"
+								bind:checked={autoDeploy}
+								class="h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+							/>
+							Auto-deploy on push to <code class="ml-1">{branch}</code>
 						</label>
 					</div>
 				{:else}
 					<div>
-						<label for="compose" class="mb-1 block text-sm font-medium text-zinc-700">
+						<label for="compose" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 							docker-compose.yml
 						</label>
 						<textarea
 							id="compose"
 							rows="14"
 							bind:value={composeFile}
-							class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+							class="block w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg)] px-3 py-2 font-mono text-xs text-[var(--color-fg)] hover:border-[var(--color-fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
 						></textarea>
-						<p class="mt-1 text-xs text-zinc-500">
-							Add <code>ports:</code> on the service you want routed, or label it <code
-								>teal.primary: "true"</code
-							>.
+						<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+							Add <code>ports:</code> on the service you want routed, or label it
+							<code>teal.primary: "true"</code>.
 						</p>
 					</div>
 				{/if}
 
 				{#if error}
-					<div class="text-sm text-red-600">{error}</div>
+					<div
+						class="rounded-md border border-[var(--color-danger-soft)] bg-[var(--color-danger-soft)] px-3 py-2 text-sm text-[var(--color-danger-soft-fg)]"
+					>
+						{error}
+					</div>
 				{/if}
 				<div class="flex justify-end">
 					<Button type="submit" disabled={submitting}>

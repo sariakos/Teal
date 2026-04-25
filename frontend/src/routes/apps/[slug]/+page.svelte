@@ -17,6 +17,12 @@
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import Select from '$lib/components/Select.svelte';
+	import Badge from '$lib/components/Badge.svelte';
+	import StatusDot from '$lib/components/StatusDot.svelte';
+	import Tabs from '$lib/components/Tabs.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import EnvVarsPanel from '$lib/components/EnvVarsPanel.svelte';
 	import VolumesPanel from '$lib/components/VolumesPanel.svelte';
 	import LogsPanel from '$lib/components/LogsPanel.svelte';
@@ -26,11 +32,37 @@
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
 	import { dirty } from '$lib/stores/dirty.svelte';
+	import { Play, Undo2, Trash2, Copy, X, Rocket } from '@lucide/svelte';
 
 	const slug = $derived(page.params.slug as string);
 
 	type Tab = 'overview' | 'deployments' | 'logs' | 'env' | 'volumes' | 'settings';
 	let tab = $state<Tab>('overview');
+
+	const tabs: { value: Tab; label: string }[] = [
+		{ value: 'overview', label: 'Overview' },
+		{ value: 'deployments', label: 'Deployments' },
+		{ value: 'logs', label: 'Logs' },
+		{ value: 'env', label: 'Env' },
+		{ value: 'volumes', label: 'Volumes' },
+		{ value: 'settings', label: 'Settings' }
+	];
+
+	type StatusTone = 'neutral' | 'warning' | 'success' | 'danger' | 'info' | 'accent';
+	const appStatusTone: Record<string, StatusTone> = {
+		idle: 'neutral',
+		deploying: 'warning',
+		running: 'success',
+		failed: 'danger',
+		stopped: 'neutral'
+	};
+	const depStatusTone: Record<string, StatusTone> = {
+		pending: 'warning',
+		running: 'warning',
+		succeeded: 'success',
+		failed: 'danger',
+		canceled: 'neutral'
+	};
 
 	// Overview live-metrics chart state. Re-loaded when the tab is opened
 	// or after any metric sample arrives.
@@ -536,126 +568,87 @@
 
 <div class="space-y-6">
 	{#if appError}
-		<div class="text-sm text-red-600">{appError}</div>
+		<div class="text-sm text-[var(--color-danger)]">{appError}</div>
 	{:else if !app}
-		<div class="text-sm text-zinc-500">Loading…</div>
+		<div class="text-sm text-[var(--color-fg-muted)]">Loading…</div>
 	{:else}
-		<div class="flex items-center justify-between">
-			<div>
-				<div class="flex items-center gap-2">
-					<h1 class="text-2xl font-semibold text-zinc-900">{app.name}</h1>
-					{#if dirty.has(slug)}
-						<span
-							class="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-warning-soft)] px-2 py-0.5 text-xs font-medium text-[var(--color-warning-soft-fg)]"
-							title="Configuration changed — redeploy to apply"
-						>
-							<span class="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]"></span>
-							Pending changes
-						</span>
-					{/if}
-				</div>
-				<p class="mt-1 text-sm text-zinc-500">
-					{app.slug} · {app.status}
-					{#if app.lastDeployedCommitSha}
-						· <span class="font-mono text-xs">{app.lastDeployedCommitSha.slice(0, 7)}</span>
-					{/if}
-				</p>
-			</div>
-			<div class="flex gap-2">
+		<PageHeader title={app.name} eyebrow={app.slug}>
+			{#snippet extra()}
+				<Badge tone={appStatusTone[app!.status] ?? 'neutral'}>
+					<StatusDot
+						tone={appStatusTone[app!.status] ?? 'neutral'}
+						pulse={app!.status === 'deploying'}
+					/>
+					{app!.status}
+				</Badge>
+				{#if dirty.has(slug)}
+					<Badge tone="warning" class="cursor-default" >
+						<span class="h-1.5 w-1.5 rounded-full bg-[var(--color-warning)]"></span>
+						Pending changes
+					</Badge>
+				{/if}
+			{/snippet}
+			{#snippet actions()}
 				<Button onclick={handleDeploy} disabled={watchedID !== null}>
-					{watchedID !== null ? 'Deploying…' : 'Deploy'}
+					{#if watchedID !== null}
+						<StatusDot tone="warning" pulse class="mr-1" />
+						Deploying…
+					{:else}
+						<Play class="h-4 w-4" />
+						Deploy
+					{/if}
 				</Button>
 				<Button variant="secondary" onclick={handleRollback} disabled={watchedID !== null}>
+					<Undo2 class="h-4 w-4" />
 					Rollback
 				</Button>
-				<Button variant="danger" onclick={handleDelete}>Delete</Button>
-			</div>
-		</div>
+				<Button variant="ghost" onclick={handleDelete} title="Delete app">
+					<Trash2 class="h-4 w-4 text-[var(--color-danger)]" />
+				</Button>
+			{/snippet}
+		</PageHeader>
 
-		<!-- Tabs -->
-		<div class="border-b border-zinc-200">
-			<nav class="-mb-px flex gap-6">
-				<button
-					class="border-b-2 pb-2 text-sm {tab === 'overview'
-						? 'border-teal-600 text-teal-700'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-					onclick={() => (tab = 'overview')}
-				>
-					Overview
-				</button>
-				<button
-					class="border-b-2 pb-2 text-sm {tab === 'deployments'
-						? 'border-teal-600 text-teal-700'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-					onclick={() => (tab = 'deployments')}
-				>
-					Deployments
-				</button>
-				<button
-					class="border-b-2 pb-2 text-sm {tab === 'logs'
-						? 'border-teal-600 text-teal-700'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-					onclick={() => (tab = 'logs')}
-				>
-					Logs
-				</button>
-				<button
-					class="border-b-2 pb-2 text-sm {tab === 'env'
-						? 'border-teal-600 text-teal-700'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-					onclick={() => (tab = 'env')}
-				>
-					Env
-				</button>
-				<button
-					class="border-b-2 pb-2 text-sm {tab === 'volumes'
-						? 'border-teal-600 text-teal-700'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-					onclick={() => (tab = 'volumes')}
-				>
-					Volumes
-				</button>
-				<button
-					class="border-b-2 pb-2 text-sm {tab === 'settings'
-						? 'border-teal-600 text-teal-700'
-						: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-					onclick={() => (tab = 'settings')}
-				>
-					Settings
-				</button>
-			</nav>
-		</div>
+		<Tabs {tabs} bind:value={tab} />
 
 		{#if tab === 'overview'}
 			{#if app.status === 'failed'}
-				<div class="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
-					<div class="flex items-center justify-between">
+				<div
+					class="rounded-lg border border-[var(--color-danger-soft)] bg-[var(--color-danger-soft)] px-4 py-3 text-sm text-[var(--color-danger-soft-fg)]"
+				>
+					<div class="flex items-center justify-between gap-3">
 						<div>
-							<div class="font-medium">Last deploy failed</div>
+							<div class="font-semibold">Last deploy failed</div>
 							<div class="mt-0.5 text-xs">
 								Check the Deployments tab for the captured log; fix and retry.
 							</div>
 						</div>
-						<Button onclick={handleDeploy} disabled={watchedID !== null}>Retry deploy</Button>
+						<Button onclick={handleDeploy} disabled={watchedID !== null}>
+							<Rocket class="h-4 w-4" />
+							Retry deploy
+						</Button>
 					</div>
 				</div>
 			{/if}
-			<div class="grid grid-cols-2 gap-4">
+			<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 				<Card title="Status">
-					<dl class="space-y-2 text-sm">
-						<div class="flex justify-between"><dt class="text-zinc-500">App status</dt><dd>{app.status}</dd></div>
-						<div class="flex justify-between"><dt class="text-zinc-500">Active color</dt><dd>{app.activeColor || '—'}</dd></div>
+					<dl class="space-y-2.5 text-sm">
 						<div class="flex justify-between gap-2">
-							<dt class="text-zinc-500">URLs</dt>
+							<dt class="text-[var(--color-fg-muted)]">Active color</dt>
+							<dd class="font-medium text-[var(--color-fg)]">{app.activeColor || '—'}</dd>
+						</div>
+						<div class="flex justify-between gap-2">
+							<dt class="text-[var(--color-fg-muted)]">URLs</dt>
 							<dd class="text-right">
 								{#if (app.routes ?? []).length === 0}
-									<span class="text-zinc-400">none — add a route in Settings</span>
+									<span class="text-[var(--color-fg-subtle)]">
+										none — add a route in Settings
+									</span>
 								{:else}
 									<ul class="space-y-0.5">
 										{#each app.routes as r}
 											<li>
 												<a
-													class="text-teal-700 hover:underline"
+													class="text-[var(--color-accent)] hover:underline"
 													href={`https://${r.domain}`}
 													target="_blank"
 													rel="noopener"
@@ -663,7 +656,9 @@
 													{r.domain}
 												</a>
 												{#if r.service}
-													<span class="ml-1 text-xs text-zinc-500">→ {r.service}</span>
+													<span class="ml-1 text-xs text-[var(--color-fg-subtle)]">
+														→ {r.service}
+													</span>
 												{/if}
 											</li>
 										{/each}
@@ -671,25 +666,53 @@
 								{/if}
 							</dd>
 						</div>
-						<div class="flex justify-between"><dt class="text-zinc-500">Branch</dt><dd>{app.gitBranch || app.autoDeployBranch || '—'}</dd></div>
-						<div class="flex justify-between"><dt class="text-zinc-500">Last commit</dt><dd class="font-mono text-xs">{app.lastDeployedCommitSha || '—'}</dd></div>
+						<div class="flex justify-between gap-2">
+							<dt class="text-[var(--color-fg-muted)]">Branch</dt>
+							<dd class="font-mono text-xs text-[var(--color-fg)]">
+								{app.gitBranch || app.autoDeployBranch || '—'}
+							</dd>
+						</div>
+						<div class="flex justify-between gap-2">
+							<dt class="text-[var(--color-fg-muted)]">Last commit</dt>
+							<dd class="font-mono text-xs text-[var(--color-fg)]">
+								{app.lastDeployedCommitSha || '—'}
+							</dd>
+						</div>
 					</dl>
 				</Card>
 
 				{#if watchedID !== null}
 					<Card title="Live deploy">
+						{#snippet actions()}
+							<button
+								type="button"
+								onclick={cancelWatching}
+								class="inline-flex items-center gap-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+							>
+								<X class="h-3.5 w-3.5" />
+								Stop watching
+							</button>
+						{/snippet}
 						<dl class="space-y-2 text-sm">
 							<div class="flex justify-between">
-								<dt class="text-zinc-500">Deployment</dt>
-								<dd>#{watchedID}</dd>
+								<dt class="text-[var(--color-fg-muted)]">Deployment</dt>
+								<dd class="font-mono">#{watchedID}</dd>
+							</div>
+							<div class="flex items-center justify-between">
+								<dt class="text-[var(--color-fg-muted)]">Status</dt>
+								<dd>
+									<Badge tone={depStatusTone[watchedStatus] ?? 'neutral'} size="sm">
+										<StatusDot
+											tone={depStatusTone[watchedStatus] ?? 'neutral'}
+											pulse={watchedStatus === 'pending' || watchedStatus === 'running'}
+										/>
+										{watchedStatus}
+									</Badge>
+								</dd>
 							</div>
 							<div class="flex justify-between">
-								<dt class="text-zinc-500">Status</dt>
-								<dd>{watchedStatus}</dd>
-							</div>
-							<div class="flex justify-between">
-								<dt class="text-zinc-500">Phase</dt>
-								<dd>{watchedPhase || '—'}</dd>
+								<dt class="text-[var(--color-fg-muted)]">Phase</dt>
+								<dd class="font-mono text-xs">{watchedPhase || '—'}</dd>
 							</div>
 						</dl>
 						<div class="mt-3">
@@ -697,37 +720,38 @@
 								<LogStream topic={`deploy.${watchedID}`} height="14rem" showStream={false} />
 							{/key}
 						</div>
-						<div class="mt-3 flex justify-end">
-							<button
-								type="button"
-								onclick={cancelWatching}
-								class="text-xs text-zinc-500 hover:text-zinc-700 hover:underline"
-							>
-								Stop watching
-							</button>
-						</div>
 					</Card>
 				{:else}
 					<Card title="Live metrics (30 min)">
 						{#if metrics.length === 0}
-							<p class="text-sm text-zinc-500">
+							<p class="text-sm text-[var(--color-fg-muted)]">
 								No samples yet. The scraper polls every 15s; data appears after the first deploy.
 							</p>
 						{:else}
 							<dl class="space-y-3 text-sm">
 								<div>
 									<div class="flex items-baseline justify-between">
-										<dt class="text-zinc-500">CPU %</dt>
-										<dd class="font-mono text-xs">{cpuSeries[cpuSeries.length - 1]?.toFixed(1) ?? '—'}</dd>
+										<dt class="text-[var(--color-fg-muted)]">CPU %</dt>
+										<dd class="font-mono text-xs">
+											{cpuSeries[cpuSeries.length - 1]?.toFixed(1) ?? '—'}
+										</dd>
 									</div>
 									<Sparkline points={cpuSeries} width={300} height={40} />
 								</div>
 								<div>
 									<div class="flex items-baseline justify-between">
-										<dt class="text-zinc-500">Memory (MiB)</dt>
-										<dd class="font-mono text-xs">{memSeries[memSeries.length - 1]?.toFixed(0) ?? '—'}</dd>
+										<dt class="text-[var(--color-fg-muted)]">Memory (MiB)</dt>
+										<dd class="font-mono text-xs">
+											{memSeries[memSeries.length - 1]?.toFixed(0) ?? '—'}
+										</dd>
 									</div>
-									<Sparkline points={memSeries} width={300} height={40} stroke="#8b5cf6" fill="rgba(139,92,246,0.10)" />
+									<Sparkline
+										points={memSeries}
+										width={300}
+										height={40}
+										stroke="#8b5cf6"
+										fill="rgba(139,92,246,0.10)"
+									/>
 								</div>
 							</dl>
 						{/if}
@@ -747,37 +771,54 @@
 				<VolumesPanel appSlug={slug} />
 			{/key}
 		{:else if tab === 'deployments'}
-			<Card>
-				{#if deployments.length === 0}
-					<div class="text-sm text-zinc-500">No deployments yet.</div>
-				{:else}
+			{#if deployments.length === 0}
+				<EmptyState
+					icon={Rocket}
+					title="No deployments yet"
+					description="Hit Deploy at the top to ship the current commit."
+				/>
+			{:else}
+				<Card padded={false}>
 					<table class="w-full text-sm">
-						<thead class="text-left text-xs uppercase text-zinc-500">
-							<tr>
-								<th class="pb-2">#</th>
-								<th class="pb-2">Color</th>
-								<th class="pb-2">Status</th>
-								<th class="pb-2">Trigger</th>
-								<th class="pb-2">Commit</th>
-								<th class="pb-2">Started</th>
-								<th class="pb-2">Failure</th>
-								<th class="pb-2"></th>
+						<thead
+							class="text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+						>
+							<tr class="border-b border-[var(--color-border)]">
+								<th class="px-5 py-2.5">#</th>
+								<th class="px-5 py-2.5">Color</th>
+								<th class="px-5 py-2.5">Status</th>
+								<th class="px-5 py-2.5">Commit</th>
+								<th class="px-5 py-2.5">Started</th>
+								<th class="px-5 py-2.5">Failure</th>
+								<th class="px-5 py-2.5"></th>
 							</tr>
 						</thead>
 						<tbody>
 							{#each deployments as d}
-								<tr class="border-t border-zinc-100">
-									<td class="py-2 font-mono">{d.id}</td>
-									<td class="py-2">{d.color}</td>
-									<td class="py-2">{d.status}</td>
-									<td class="py-2 text-zinc-600">—</td>
-									<td class="py-2 font-mono text-xs">{d.commitSha ? d.commitSha.slice(0, 7) : '—'}</td>
-									<td class="py-2 text-zinc-500">
+								<tr
+									class="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg-subtle)]"
+								>
+									<td class="px-5 py-2.5 font-mono">#{d.id}</td>
+									<td class="px-5 py-2.5 text-[var(--color-fg-muted)]">{d.color}</td>
+									<td class="px-5 py-2.5">
+										<Badge tone={depStatusTone[d.status] ?? 'neutral'} size="sm">
+											{d.status}
+										</Badge>
+									</td>
+									<td class="px-5 py-2.5 font-mono text-xs text-[var(--color-fg-muted)]">
+										{d.commitSha ? d.commitSha.slice(0, 7) : '—'}
+									</td>
+									<td class="px-5 py-2.5 text-xs text-[var(--color-fg-muted)]">
 										{d.startedAt ? new Date(d.startedAt).toLocaleString() : '—'}
 									</td>
-									<td class="py-2 text-red-600">{d.failureReason || ''}</td>
-									<td class="py-2 text-right">
-										<button class="text-sm text-teal-700 hover:underline" onclick={() => openDeployLog(d.id)}>
+									<td class="px-5 py-2.5 max-w-xs truncate text-xs text-[var(--color-danger)]">
+										{d.failureReason || ''}
+									</td>
+									<td class="px-5 py-2.5 text-right">
+										<button
+											class="text-xs font-medium text-[var(--color-accent)] hover:underline"
+											onclick={() => openDeployLog(d.id)}
+										>
 											View log
 										</button>
 									</td>
@@ -785,53 +826,69 @@
 							{/each}
 						</tbody>
 					</table>
-				{/if}
-			</Card>
+				</Card>
+			{/if}
 		{:else}
 			<!-- Settings tab -->
 			{#if revealedSecret}
 				<Card title="Copy the webhook secret now — it will not be shown again">
 					<div class="flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-900 px-3 py-2 text-sm text-teal-300"
-							>{revealedSecret}</code
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-fg)] px-3 py-2 font-mono text-xs text-[var(--color-accent)]"
 						>
-						<Button variant="secondary" onclick={() => copyToClipboard(revealedSecret!)}>Copy</Button>
-						<Button variant="secondary" onclick={() => (revealedSecret = null)}>Dismiss</Button>
+							{revealedSecret}
+						</code>
+						<Button variant="secondary" onclick={() => copyToClipboard(revealedSecret!)}>
+							<Copy class="h-4 w-4" />
+							Copy
+						</Button>
+						<Button variant="ghost" onclick={() => (revealedSecret = null)}>Dismiss</Button>
 					</div>
 				</Card>
 			{/if}
 			{#if revealedPublicKey}
-				<Card title="Copy the SSH public key into GitHub now — paste it as a Deploy key">
+				<Card title="Copy the SSH public key into GitHub — paste it as a Deploy key">
 					<div class="flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800"
-							>{revealedPublicKey}</code
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--color-fg)]"
 						>
-						<Button variant="secondary" onclick={() => copyToClipboard(revealedPublicKey!)}>Copy</Button>
+							{revealedPublicKey}
+						</code>
+						<Button variant="secondary" onclick={() => copyToClipboard(revealedPublicKey!)}>
+							<Copy class="h-4 w-4" />
+							Copy
+						</Button>
 					</div>
 					{#if revealedFingerprint}
-						<p class="mt-2 font-mono text-xs text-zinc-500">Fingerprint: {revealedFingerprint}</p>
+						<p class="mt-2 font-mono text-xs text-[var(--color-fg-muted)]">
+							Fingerprint: {revealedFingerprint}
+						</p>
 					{/if}
 					<div class="mt-3">
-						<Button variant="secondary" onclick={() => (revealedPublicKey = null)}>Dismiss</Button>
+						<Button variant="ghost" onclick={() => (revealedPublicKey = null)}>Dismiss</Button>
 					</div>
 				</Card>
 			{/if}
 
-			<Card title="Routes">
-				<p class="mb-3 text-sm text-zinc-500">
-					Give each service its own public hostname. Leave a service blank to keep it
-					private. Ports are auto-detected — only override when the probe gets it wrong.
-				</p>
+			<Card
+				title="Routes"
+				description="Give each service its own public hostname. Ports are auto-detected — only override when the probe gets it wrong."
+			>
 				{#if servicesLoading}
-					<p class="text-sm text-zinc-500">Loading services…</p>
+					<p class="text-sm text-[var(--color-fg-muted)]">Loading services…</p>
 				{:else if servicesError}
-					<p class="text-sm text-red-600">{servicesError}</p>
+					<p class="text-sm text-[var(--color-danger)]">{servicesError}</p>
 				{:else if servicesSource === 'none'}
-					<p class="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
-						{servicesHint || 'No compose available yet — deploy at least once so Teal can list services.'}
+					<p
+						class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-subtle)] px-3 py-2 text-sm text-[var(--color-fg-muted)]"
+					>
+						{servicesHint ||
+							'No compose available yet — deploy at least once so Teal can list services.'}
 					</p>
 				{:else if services.length === 0}
-					<p class="text-sm text-zinc-500">No services declared in the compose file.</p>
+					<p class="text-sm text-[var(--color-fg-muted)]">
+						No services declared in the compose file.
+					</p>
 				{:else}
 					<form
 						onsubmit={(e) => {
@@ -840,21 +897,23 @@
 						}}
 						class="space-y-3"
 					>
-						<div class="overflow-hidden rounded-md border border-zinc-200">
+						<div class="overflow-hidden rounded-md border border-[var(--color-border)]">
 							<table class="w-full text-sm">
-								<thead class="bg-zinc-50 text-xs uppercase text-zinc-500">
+								<thead
+									class="bg-[var(--color-bg-subtle)] text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+								>
 									<tr>
 										<th class="px-3 py-2 text-left">Service</th>
 										<th class="px-3 py-2 text-left">Domain</th>
-										<th class="px-3 py-2 text-left">Port</th>
+										<th class="px-3 py-2 text-left w-32">Port</th>
 									</tr>
 								</thead>
-								<tbody class="divide-y divide-zinc-100">
+								<tbody class="divide-y divide-[var(--color-border)]">
 									{#each services as svc (svc.name)}
 										<tr>
 											<td class="px-3 py-2 align-top">
-												<div class="font-medium text-zinc-800">{svc.name}</div>
-												<div class="text-xs text-zinc-500">
+												<div class="font-medium text-[var(--color-fg)]">{svc.name}</div>
+												<div class="text-xs text-[var(--color-fg-muted)]">
 													{svc.image || (svc.hasBuild ? 'built from source' : '—')}
 													{#if svc.exposedPorts && svc.exposedPorts.length > 0}
 														· ports: {svc.exposedPorts.join(', ')}
@@ -879,13 +938,10 @@
 							</table>
 						</div>
 						{#if routesError}
-							<div class="text-sm text-red-600">{routesError}</div>
-						{/if}
-						{#if routesSaved}
-							<div class="text-sm text-teal-700">Saved — redeploy to apply.</div>
+							<div class="text-sm text-[var(--color-danger)]">{routesError}</div>
 						{/if}
 						<div class="flex items-center justify-between">
-							<p class="text-xs text-zinc-500">
+							<p class="text-xs text-[var(--color-fg-subtle)]">
 								Source: {servicesSource}. HTTPS is added automatically once an LE cert is issued.
 							</p>
 							<Button type="submit" disabled={routesSaving}>
@@ -905,80 +961,92 @@
 					class="space-y-4"
 				>
 					<div>
-						<label for="giturl" class="mb-1 block text-sm font-medium text-zinc-700">
-							Git URL (https or ssh). Leave empty to paste compose manually.
+						<label for="giturl" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+							Git URL
 						</label>
-						<Input id="giturl" bind:value={formGitUrl} placeholder="https://github.com/owner/repo.git" />
+						<Input
+							id="giturl"
+							bind:value={formGitUrl}
+							placeholder="https://github.com/owner/repo.git"
+						/>
+						<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+							HTTPS or SSH. Leave empty to paste compose manually.
+						</p>
 					</div>
-					<div class="grid grid-cols-2 gap-4">
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<div>
-							<label for="gitbranch" class="mb-1 block text-sm font-medium text-zinc-700">
+							<label for="gitbranch" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 								Branch
 							</label>
 							<Input id="gitbranch" bind:value={formGitBranch} placeholder="main" />
 						</div>
 						<div>
-							<label for="gitpath" class="mb-1 block text-sm font-medium text-zinc-700">
+							<label for="gitpath" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 								Compose path inside the repo
 							</label>
-							<Input id="gitpath" bind:value={formGitComposePath} placeholder="docker-compose.yml" />
+							<Input
+								id="gitpath"
+								bind:value={formGitComposePath}
+								placeholder="docker-compose.yml"
+								mono
+							/>
 						</div>
 					</div>
 					<div>
-						<label for="authkind" class="mb-1 block text-sm font-medium text-zinc-700">
+						<label for="authkind" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 							Authentication
 						</label>
-						<select
-							id="authkind"
-							bind:value={formGitAuthKind}
-							class="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
-						>
+						<Select id="authkind" bind:value={formGitAuthKind}>
 							<option value="">Public (no auth)</option>
 							<option value="ssh">SSH deploy key (Teal generates)</option>
 							<option value="pat">Personal access token</option>
 							<option value="github_app">GitHub App (recommended)</option>
-						</select>
+						</Select>
 					</div>
 					{#if formGitAuthKind === 'github_app'}
-						<div class="space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm">
+						<div
+							class="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-subtle)] p-3 text-sm"
+						>
 							{#if ghaReposLoading}
-								<p class="text-zinc-500">Loading installations…</p>
+								<p class="text-[var(--color-fg-muted)]">Loading installations…</p>
 							{:else if ghaReposError}
-								<p class="text-red-600">{ghaReposError}</p>
+								<p class="text-[var(--color-danger)]">{ghaReposError}</p>
 							{:else if !ghaRepos || !ghaRepos.configured}
-								<p class="text-zinc-700">
+								<p class="text-[var(--color-fg-muted)]">
 									The platform GitHub App isn't configured yet. Set it up at
-									<a class="text-teal-700 underline" href="/settings/github-app">
+									<a class="text-[var(--color-accent)] underline" href="/settings/github-app">
 										Settings → GitHub App
 									</a>
 									first (one-click flow available there), then come back here.
 								</p>
 							{:else if ghaRepos.installations.length === 0}
 								<div class="space-y-2">
-									<p class="text-zinc-700">
+									<p class="text-[var(--color-fg-muted)]">
 										The platform App isn't installed on any repos yet. Install it on at least
 										one repo, then refresh.
 									</p>
 									{#if ghaRepos.appSlug}
-										<a
-											class="inline-flex items-center rounded-md bg-teal-600 px-3 py-2 text-xs font-medium text-white hover:bg-teal-700"
-											target="_blank"
-											rel="noopener"
-											href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
+										<Button
+											size="sm"
+											onclick={() =>
+												window.open(
+													`https://github.com/apps/${ghaRepos!.appSlug}/installations/new`,
+													'_blank',
+													'noopener'
+												)}
 										>
-											Install on GitHub →
-										</a>
+											Install on GitHub
+										</Button>
 									{/if}
 								</div>
 							{:else}
-								<label for="repoPick" class="block text-xs font-medium text-zinc-600">
+								<label
+									for="repoPick"
+									class="block text-xs font-medium text-[var(--color-fg-muted)]"
+								>
 									Pick a repo
 								</label>
-								<select
-									id="repoPick"
-									bind:value={selectedRepoKey}
-									class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
-								>
+								<Select id="repoPick" bind:value={selectedRepoKey}>
 									<option value="">Select a repository…</option>
 									{#each ghaRepos.installations as inst (inst.installationId)}
 										<optgroup label={inst.accountLogin}>
@@ -993,14 +1061,15 @@
 											{/if}
 										</optgroup>
 									{/each}
-								</select>
+								</Select>
 								<div class="flex items-center justify-between gap-2">
-									<p class="text-xs text-zinc-500">
+									<p class="text-xs text-[var(--color-fg-subtle)]">
 										Saving links this app to the picked repo + installation. The Git URL +
 										auth fields are filled in for you.
 									</p>
 									<Button
 										variant="secondary"
+										size="sm"
 										disabled={!selectedRepoKey || linkingRepo}
 										onclick={() => void linkSelectedRepo()}
 									>
@@ -1008,10 +1077,10 @@
 									</Button>
 								</div>
 								{#if ghaRepos.appSlug}
-									<p class="text-xs text-zinc-500">
+									<p class="text-xs text-[var(--color-fg-subtle)]">
 										Don't see the repo you want?
 										<a
-											class="text-teal-700 underline"
+											class="text-[var(--color-accent)] underline"
 											target="_blank"
 											rel="noopener"
 											href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
@@ -1025,23 +1094,32 @@
 					{/if}
 					{#if formGitAuthKind === 'pat'}
 						<div>
-							<label for="credential" class="mb-1 block text-sm font-medium text-zinc-700">
+							<label
+								for="credential"
+								class="mb-1 block text-sm font-medium text-[var(--color-fg)]"
+							>
 								Personal access token
 							</label>
 							<Input
 								id="credential"
 								type="password"
 								bind:value={formGitCredential}
-								placeholder={app.hasGitCredential ? '(leave empty to keep existing)' : 'ghp_…'}
+								placeholder={app.hasGitCredential
+									? '(leave empty to keep existing)'
+									: 'ghp_…'}
 							/>
 						</div>
 					{/if}
-					<label class="flex items-center gap-2 text-sm text-zinc-700">
-						<input type="checkbox" bind:checked={formAutoDeploy} />
+					<label class="flex items-center gap-2 text-sm text-[var(--color-fg)]">
+						<input
+							type="checkbox"
+							bind:checked={formAutoDeploy}
+							class="h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+						/>
 						Auto-deploy on webhook push to this branch
 					</label>
 					{#if settingsError}
-						<div class="text-sm text-red-600">{settingsError}</div>
+						<div class="text-sm text-[var(--color-danger)]">{settingsError}</div>
 					{/if}
 					<div class="flex justify-end">
 						<Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
@@ -1050,76 +1128,107 @@
 			</Card>
 
 			{#if app.gitAuthKind === 'ssh' && app.hasGitCredential && existingPublicKey}
-				<Card title="SSH deploy key">
-					<p class="mb-2 text-sm text-zinc-600">
-						Paste this public key into GitHub → repo → Settings → Deploy keys.
-					</p>
+				<Card
+					title="SSH deploy key"
+					description="Paste this public key into GitHub → repo → Settings → Deploy keys."
+				>
 					<div class="flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800"
-							>{existingPublicKey}</code
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--color-fg)]"
 						>
-						<Button variant="secondary" onclick={() => copyToClipboard(existingPublicKey!)}>Copy</Button>
+							{existingPublicKey}
+						</code>
+						<Button
+							variant="secondary"
+							onclick={() => copyToClipboard(existingPublicKey!)}
+						>
+							<Copy class="h-4 w-4" />
+							Copy
+						</Button>
 					</div>
 					{#if existingFingerprint}
-						<p class="mt-2 font-mono text-xs text-zinc-500">Fingerprint: {existingFingerprint}</p>
+						<p class="mt-2 font-mono text-xs text-[var(--color-fg-muted)]">
+							Fingerprint: {existingFingerprint}
+						</p>
 					{/if}
 					<div class="mt-3 flex justify-end">
-						<Button variant="secondary" onclick={rotateDeployKey}>Rotate deploy key</Button>
+						<Button variant="ghost" size="sm" onclick={rotateDeployKey}>
+							Rotate deploy key
+						</Button>
 					</div>
 				</Card>
 			{/if}
 
 			{#if app.gitUrl && app.hasWebhookSecret}
-				<Card title="Webhook">
-					<p class="mb-2 text-sm text-zinc-600">
-						Configure this URL in GitHub → repo → Settings → Webhooks. Content type
-						<code>application/json</code>. Secret is the value shown on initial save / rotate.
-					</p>
+				<Card
+					title="Webhook"
+					description="Configure this URL in GitHub → repo → Settings → Webhooks. Content type application/json. Secret is the value shown on initial save / rotate."
+				>
 					<div class="flex items-center gap-2">
-						<code class="flex-1 break-all rounded bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-800"
-							>{webhookURL}</code
+						<code
+							class="flex-1 break-all rounded-md bg-[var(--color-bg-subtle)] px-3 py-2 font-mono text-xs text-[var(--color-fg)]"
 						>
-						<Button variant="secondary" onclick={() => copyToClipboard(webhookURL)}>Copy</Button>
+							{webhookURL}
+						</code>
+						<Button variant="secondary" onclick={() => copyToClipboard(webhookURL)}>
+							<Copy class="h-4 w-4" />
+							Copy
+						</Button>
 					</div>
 					<div class="mt-3 flex justify-end">
-						<Button variant="secondary" onclick={rotateWebhookSecret}>Rotate webhook secret</Button>
+						<Button variant="ghost" size="sm" onclick={rotateWebhookSecret}>
+							Rotate webhook secret
+						</Button>
 					</div>
 				</Card>
 			{/if}
 
-			<Card title="Resource limits">
-				<p class="mb-3 text-sm text-zinc-500">
-					Applied to every service in this app's compose. Empty disables the limit.
-				</p>
-				<div class="grid grid-cols-2 gap-4">
+			<Card
+				title="Resource limits"
+				description="Applied to every service in this app's compose. Empty disables the limit."
+			>
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div>
-						<label for="cpu" class="mb-1 block text-sm font-medium text-zinc-700">CPU</label>
+						<label for="cpu" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+							CPU
+						</label>
 						<Input id="cpu" bind:value={formCPULimit} placeholder="0.5" />
-						<p class="mt-1 text-xs text-zinc-500">Number of CPUs (e.g. 0.5, 2).</p>
+						<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+							Number of CPUs (e.g. 0.5, 2).
+						</p>
 					</div>
 					<div>
-						<label for="mem" class="mb-1 block text-sm font-medium text-zinc-700">Memory</label>
+						<label for="mem" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+							Memory
+						</label>
 						<Input id="mem" bind:value={formMemoryLimit} placeholder="512m" />
-						<p class="mt-1 text-xs text-zinc-500">Compose grammar (256m, 1g).</p>
+						<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+							Compose grammar (256m, 1g).
+						</p>
 					</div>
 				</div>
 			</Card>
 
-			<Card title="Notifications">
-				<p class="mb-3 text-sm text-zinc-500">
-					On every terminal deploy, Teal can POST a signed JSON event and email on failure.
-				</p>
+			<Card
+				title="Notifications"
+				description="On every terminal deploy, Teal can POST a signed JSON event and email on failure."
+			>
 				<div class="space-y-3">
 					<div>
-						<label for="hook" class="mb-1 block text-sm font-medium text-zinc-700">
+						<label for="hook" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 							Outbound webhook URL
 						</label>
-						<Input id="hook" bind:value={formNotifyWebhookUrl} placeholder="https://hooks.example.com/teal" />
+						<Input
+							id="hook"
+							bind:value={formNotifyWebhookUrl}
+							placeholder="https://hooks.example.com/teal"
+						/>
 					</div>
 					{#if app.hasNotificationSecret}
 						<div class="flex justify-end">
 							<Button
-								variant="secondary"
+								variant="ghost"
+								size="sm"
 								onclick={async () => {
 									if (
 										!(await dialog.confirm({
@@ -1146,11 +1255,16 @@
 						</div>
 					{/if}
 					<div>
-						<label for="nemail" class="mb-1 block text-sm font-medium text-zinc-700">
+						<label for="nemail" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 							Failure email recipient
 						</label>
-						<Input id="nemail" type="email" bind:value={formNotifyEmail} placeholder="ops@example.com" />
-						<p class="mt-1 text-xs text-zinc-500">
+						<Input
+							id="nemail"
+							type="email"
+							bind:value={formNotifyEmail}
+							placeholder="ops@example.com"
+						/>
+						<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
 							Sent on deploy failure only. SMTP must be configured in Platform settings.
 						</p>
 					</div>
@@ -1162,24 +1276,42 @@
 
 {#if logModalDepID !== null}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 p-4"
-		role="dialog"
-		aria-modal="true"
+		class="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+		style="animation: overlay-in 120ms ease-out both;"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) {
+				logModalDepID = null;
+				logModalText = '';
+			}
+		}}
+		role="presentation"
 	>
-		<div class="flex max-h-[80vh] w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl">
-			<div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-				<h2 class="text-lg font-medium text-zinc-900">Deployment #{logModalDepID} log</h2>
+		<div
+			class="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-modal)]"
+			style="animation: dialog-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;"
+			role="dialog"
+			aria-modal="true"
+		>
+			<div
+				class="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3"
+			>
+				<h2 class="text-sm font-semibold text-[var(--color-fg)]">
+					Deployment #{logModalDepID} log
+				</h2>
 				<button
-					class="text-sm text-zinc-500 hover:text-zinc-800"
+					class="-m-1 rounded p-1 text-[var(--color-fg-subtle)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-fg)]"
+					aria-label="Close"
 					onclick={() => {
 						logModalDepID = null;
 						logModalText = '';
 					}}
 				>
-					Close
+					<X class="h-4 w-4" />
 				</button>
 			</div>
-			<div class="flex-1 overflow-auto bg-zinc-950 p-3 font-mono text-xs leading-snug text-zinc-100">
+			<div
+				class="flex-1 overflow-auto bg-[#0b0b0e] p-3 font-mono text-xs leading-relaxed text-zinc-100"
+			>
 				{#if logModalLoading}
 					<div class="text-zinc-400">Loading…</div>
 				{:else}

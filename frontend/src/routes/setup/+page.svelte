@@ -5,7 +5,6 @@
 	import { bootstrapAdmin, fetchSetupStatus } from '$lib/api/auth';
 	import { auth } from '$lib/stores/auth.svelte';
 	import { ApiError } from '$lib/api/client';
-	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import Input from '$lib/components/Input.svelte';
 
@@ -20,15 +19,12 @@
 	let error = $state<string | null>(null);
 
 	onMount(async () => {
-		// Pull token from URL first so the user sees a pre-filled field
-		// and doesn't have to re-paste from the installer's output.
 		const urlToken = page.url.searchParams.get('token');
 		if (urlToken) token = urlToken;
 		try {
 			const status = await fetchSetupStatus();
 			requiresToken = !!status.requiresToken;
 		} catch {
-			// Non-fatal — fall back to "show the field" if we can't tell.
 			requiresToken = true;
 		}
 	});
@@ -41,7 +37,8 @@
 			return;
 		}
 		if (requiresToken && !token.trim()) {
-			error = 'Bootstrap token is required. Find it in the installer output, or re-run install.sh to get a new one.';
+			error =
+				'Bootstrap token is required. Find it in the installer output, or re-run install.sh to get a new one.';
 			return;
 		}
 		submitting = true;
@@ -64,19 +61,39 @@
 	}
 </script>
 
-<Card title="Create the first admin">
-	<p class="mb-4 text-sm text-zinc-600">
-		Welcome to Teal. This is a fresh install — set up the admin account that will manage every
-		app on this host.
+<div
+	class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 shadow-[var(--shadow-popover)]"
+>
+	<div class="mb-2 flex items-center gap-2">
+		<span
+			class="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[var(--shadow-xs)]"
+		>
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="h-4 w-4"
+				aria-hidden="true"
+			>
+				<path d="M4 6h16M9 12h11M4 18h16" />
+			</svg>
+		</span>
+		<h1 class="text-lg font-semibold text-[var(--color-fg)]">Welcome to Teal</h1>
+	</div>
+	<p class="mb-6 text-sm text-[var(--color-fg-muted)]">
+		Fresh install — set up the admin account that will manage every app on this host.
 	</p>
 	<form onsubmit={handleSubmit} class="space-y-4">
 		<div>
-			<label for="email" class="mb-1 block text-sm font-medium text-zinc-700">Email</label>
+			<label for="email" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">Email</label>
 			<Input id="email" type="email" autocomplete="email" required bind:value={email} />
 		</div>
 		<div>
-			<label for="password" class="mb-1 block text-sm font-medium text-zinc-700">
-				Password (at least 12 characters)
+			<label for="password" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+				Password
 			</label>
 			<Input
 				id="password"
@@ -85,24 +102,35 @@
 				required
 				bind:value={password}
 			/>
+			<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">At least 12 characters.</p>
 		</div>
 		{#if requiresToken}
 			<div>
-				<label for="token" class="mb-1 block text-sm font-medium text-zinc-700">
+				<label for="token" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
 					Bootstrap token
 				</label>
-				<Input id="token" required bind:value={token} placeholder="64-char hex from install.sh" />
-				<p class="mt-1 text-xs text-zinc-500">
-					Printed by the installer at the end of its output. The token expires the moment the
+				<Input
+					id="token"
+					required
+					mono
+					bind:value={token}
+					placeholder="64-char hex from install.sh"
+				/>
+				<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
+					Printed by the installer at the end of its output. Single-use — burned the moment the
 					first admin is created.
 				</p>
 			</div>
 		{/if}
 		{#if error}
-			<div class="text-sm text-red-600">{error}</div>
+			<div
+				class="rounded-md border border-[var(--color-danger-soft)] bg-[var(--color-danger-soft)] px-3 py-2 text-sm text-[var(--color-danger-soft-fg)]"
+			>
+				{error}
+			</div>
 		{/if}
 		<Button type="submit" disabled={submitting} class="w-full">
 			{submitting ? 'Creating…' : 'Create admin and sign in'}
 		</Button>
 	</form>
-</Card>
+</div>

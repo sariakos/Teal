@@ -5,12 +5,10 @@
 -->
 <script lang="ts">
 	import VolumesPanel from '$lib/components/VolumesPanel.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 </script>
 
 <div class="space-y-6">
-	<div>
-		<h1 class="text-2xl font-semibold text-zinc-900">Volumes</h1>
-		<p class="mt-1 text-sm text-zinc-500">All Docker named volumes on this host.</p>
-	</div>
+	<PageHeader title="Volumes" description="All Docker named volumes on this host." />
 	<VolumesPanel />
 </div>

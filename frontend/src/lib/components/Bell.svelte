@@ -12,6 +12,8 @@
 		type NotificationRow
 	} from '$lib/api/notifications';
 	import { auth } from '$lib/stores/auth.svelte';
+	import { Bell as BellIcon } from '@lucide/svelte';
+	import StatusDot from './StatusDot.svelte';
 
 	let items = $state<NotificationRow[]>([]);
 	let unread = $state(0);
@@ -77,20 +79,25 @@
 	$effect(() => {
 		if (open) void reload();
 	});
+
+	function levelTone(level: string): 'danger' | 'warning' | 'accent' {
+		if (level === 'error') return 'danger';
+		if (level === 'warn') return 'warning';
+		return 'accent';
+	}
 </script>
 
 <div class="relative">
 	<button
-		class="relative rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+		class="relative flex h-8 w-8 items-center justify-center rounded-md text-[var(--color-fg-muted)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-fg)]"
 		aria-label="Notifications"
 		onclick={() => (open = !open)}
 	>
-		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-			<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-			<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-		</svg>
+		<BellIcon class="h-4 w-4" />
 		{#if unread > 0}
-			<span class="absolute -right-0.5 -top-0.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-medium text-white">
+			<span
+				class="absolute right-0 top-0 inline-flex min-w-[16px] -translate-y-1 translate-x-1 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-medium text-[var(--color-danger-fg)]"
+			>
 				{unread > 99 ? '99+' : unread}
 			</span>
 		{/if}
@@ -98,41 +105,46 @@
 
 	{#if open}
 		<div
-			class="absolute right-0 z-30 mt-2 w-80 rounded-md border border-zinc-200 bg-white shadow-lg"
+			class="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-popover)]"
 		>
-			<div class="flex items-center justify-between border-b border-zinc-100 px-3 py-2">
-				<span class="text-sm font-medium text-zinc-800">Notifications</span>
-				<button class="text-xs text-teal-700 hover:underline" onclick={markAll}>
+			<div
+				class="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2"
+			>
+				<span class="text-sm font-semibold text-[var(--color-fg)]">Notifications</span>
+				<button
+					class="text-xs text-[var(--color-accent)] hover:underline"
+					onclick={markAll}
+				>
 					Mark all read
 				</button>
 			</div>
 			<div class="max-h-96 overflow-auto">
 				{#if items.length === 0}
-					<div class="px-3 py-6 text-center text-sm text-zinc-500">No notifications.</div>
+					<div class="px-3 py-8 text-center text-sm text-[var(--color-fg-muted)]">
+						No notifications.
+					</div>
 				{:else}
 					{#each items as n (n.id)}
-						<div class="border-b border-zinc-100 px-3 py-2 text-sm last:border-0">
+						<div
+							class="border-b border-[var(--color-border)] px-3 py-2.5 text-sm last:border-0 {!n.readAt
+								? 'bg-[var(--color-bg-subtle)]'
+								: ''}"
+						>
 							<div class="flex items-start justify-between gap-2">
-								<div class="flex-1">
-									<div class="font-medium text-zinc-800">
-										<span
-											class="mr-1 inline-block h-1.5 w-1.5 rounded-full {n.level ===
-											'error'
-												? 'bg-red-500'
-												: n.level === 'warn'
-													? 'bg-amber-500'
-													: 'bg-teal-500'}"
-										></span>
-										{n.title}
+								<div class="min-w-0 flex-1">
+									<div class="flex items-center gap-1.5 font-medium text-[var(--color-fg)]">
+										<StatusDot tone={levelTone(n.level)} />
+										<span class="truncate">{n.title}</span>
 									</div>
 									{#if n.body}
-										<div class="mt-1 text-xs text-zinc-600">{n.body}</div>
+										<div class="mt-1 text-xs text-[var(--color-fg-muted)]">{n.body}</div>
 									{/if}
-									<div class="mt-1 text-[11px] text-zinc-400">
+									<div class="mt-1 text-[11px] text-[var(--color-fg-subtle)]">
 										{new Date(n.createdAt).toLocaleString()}
 										{#if n.appSlug}
-											· <button
-												class="text-teal-700 hover:underline"
+											·
+											<button
+												class="text-[var(--color-accent)] hover:underline"
 												onclick={() => gotoApp(n.appSlug)}
 											>
 												{n.appSlug}
@@ -142,7 +154,7 @@
 								</div>
 								{#if !n.readAt}
 									<button
-										class="text-[11px] text-zinc-500 hover:text-teal-700"
+										class="text-[11px] text-[var(--color-fg-muted)] hover:text-[var(--color-accent)]"
 										onclick={() => markRead(n.id)}
 									>
 										Mark read

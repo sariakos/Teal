@@ -101,23 +101,33 @@
 			type="text"
 			placeholder="Filter…"
 			bind:value={filter}
-			class="flex-1 rounded-md border border-zinc-300 px-2 py-1 text-sm"
+			class="flex-1 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg)] px-2.5 py-1 text-xs text-[var(--color-fg)] placeholder-[var(--color-fg-subtle)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
 		/>
-		<label class="flex items-center gap-1 text-xs text-zinc-600">
-			<input type="checkbox" bind:checked={timestamps} />
+		<label class="flex items-center gap-1 text-xs text-[var(--color-fg-muted)]">
+			<input
+				type="checkbox"
+				bind:checked={timestamps}
+				class="h-3.5 w-3.5 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+			/>
 			Timestamps
 		</label>
-		<label class="flex items-center gap-1 text-xs text-zinc-600">
-			<input type="checkbox" bind:checked={autoScroll} />
+		<label class="flex items-center gap-1 text-xs text-[var(--color-fg-muted)]">
+			<input
+				type="checkbox"
+				bind:checked={autoScroll}
+				class="h-3.5 w-3.5 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+			/>
 			Follow
 		</label>
-		<span class="text-xs text-zinc-400">{visible.length} / {lines.length}</span>
+		<span class="text-xs text-[var(--color-fg-subtle)]">
+			{visible.length} / {lines.length}
+		</span>
 	</div>
 	<div
 		bind:this={scroller}
 		onscroll={onUserScroll}
 		style:height
-		class="overflow-auto rounded-md border border-zinc-200 bg-zinc-950 p-2 font-mono text-xs leading-snug text-zinc-100"
+		class="overflow-auto rounded-md border border-[var(--color-border)] bg-[#0b0b0e] p-2 font-mono text-xs leading-relaxed text-zinc-100"
 	>
 		{#each visible as l, i (i)}
 			<div class="whitespace-pre-wrap break-all">

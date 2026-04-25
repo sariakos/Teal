@@ -8,6 +8,9 @@
 	import { onMount } from 'svelte';
 	import { logsApi, type ContainerSummary, type LogLine } from '$lib/api/logs';
 	import LogStream from './LogStream.svelte';
+	import Select from './Select.svelte';
+	import EmptyState from './EmptyState.svelte';
+	import { ScrollText, RefreshCw } from '@lucide/svelte';
 
 	let { slug }: { slug: string } = $props();
 
@@ -51,27 +54,31 @@
 
 <div class="space-y-3">
 	{#if loading}
-		<div class="text-sm text-zinc-500">Loading containers…</div>
+		<div class="text-sm text-[var(--color-fg-muted)]">Loading containers…</div>
 	{:else if error}
-		<div class="text-sm text-red-600">{error}</div>
+		<div class="text-sm text-[var(--color-danger)]">{error}</div>
 	{:else if containers.length === 0}
-		<div class="text-sm text-zinc-500">
-			No platform-managed containers running for this app yet. Deploy first.
-		</div>
+		<EmptyState
+			icon={ScrollText}
+			title="No containers yet"
+			description="Logs show up here once the first deploy is running."
+		/>
 	{:else}
-		<div class="flex items-center gap-2 text-sm">
-			<label for="containerpick" class="text-zinc-500">Container:</label>
-			<select
-				id="containerpick"
-				bind:value={selected}
-				class="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm"
+		<div class="flex items-center gap-3 text-sm">
+			<label for="containerpick" class="shrink-0 text-[var(--color-fg-muted)]">Container</label>
+			<div class="flex-1 max-w-xs">
+				<Select id="containerpick" size="sm" bind:value={selected}>
+					{#each containers as c}
+						<option value={c.id}>{c.name} ({c.color})</option>
+					{/each}
+				</Select>
+			</div>
+			<button
+				class="inline-flex items-center gap-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+				onclick={reload}
 			>
-				{#each containers as c}
-					<option value={c.id}>{c.name} ({c.color})</option>
-				{/each}
-			</select>
-			<button class="ml-2 text-xs text-teal-700 hover:underline" onclick={reload}>
-				Refresh container list
+				<RefreshCw class="h-3 w-3" />
+				Refresh
 			</button>
 		</div>
 		{#key selected}

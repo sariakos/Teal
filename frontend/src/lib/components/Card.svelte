@@ -2,18 +2,43 @@
 	import type { Snippet } from 'svelte';
 	interface Props {
 		title?: string;
+		description?: string;
+		actions?: Snippet;
+		padded?: boolean;
+		class?: string;
 		children: Snippet;
 	}
-	let { title = '', children }: Props = $props();
+	let {
+		title = '',
+		description = '',
+		actions,
+		padded = true,
+		class: extraClass = '',
+		children
+	}: Props = $props();
 </script>
 
-<div class="rounded-lg border border-zinc-200 bg-white shadow-sm">
-	{#if title}
-		<div class="border-b border-zinc-200 px-5 py-3">
-			<h2 class="text-sm font-medium text-zinc-700">{title}</h2>
-		</div>
+<section
+	class="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-card)] {extraClass}"
+>
+	{#if title || actions}
+		<header
+			class="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-3"
+		>
+			<div class="min-w-0">
+				{#if title}
+					<h2 class="text-sm font-semibold text-[var(--color-fg)]">{title}</h2>
+				{/if}
+				{#if description}
+					<p class="mt-0.5 text-xs text-[var(--color-fg-muted)]">{description}</p>
+				{/if}
+			</div>
+			{#if actions}
+				<div class="flex shrink-0 items-center gap-2">{@render actions()}</div>
+			{/if}
+		</header>
 	{/if}
-	<div class="p-5">
+	<div class={padded ? 'p-5' : ''}>
 		{@render children()}
 	</div>
-</div>
+</section>

@@ -10,8 +10,11 @@
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
+	import EmptyState from '$lib/components/EmptyState.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
+	import { Eye, EyeOff, Globe, Trash2 } from '@lucide/svelte';
 
 	let rows = $state<EnvVarRow[]>([]);
 	let loading = $state(true);
@@ -78,61 +81,74 @@
 </script>
 
 <div class="space-y-6">
-	<div>
-		<h1 class="text-2xl font-semibold text-zinc-900">Shared env vars</h1>
-		<p class="mt-1 text-sm text-zinc-500">
-			Available to every app, but each app must explicitly opt in from its own Env tab. Admin only.
-		</p>
-	</div>
+	<PageHeader
+		title="Shared env vars"
+		description="Available to every app, but each app must explicitly opt in from its own Env tab. Admin only."
+	/>
 
-	<Card>
-		{#if error}
-			<div class="text-sm text-red-600">{error}</div>
-		{:else if loading}
-			<div class="text-sm text-zinc-500">Loading…</div>
+	{#if error}
+		<div class="text-sm text-[var(--color-danger)]">{error}</div>
+	{:else if loading}
+		<div class="text-sm text-[var(--color-fg-muted)]">Loading…</div>
+	{:else}
+		{#if rows.length === 0}
+			<EmptyState
+				icon={Globe}
+				title="No shared env vars yet"
+				description="Add one below — apps will need to opt in from their own Env tab."
+			/>
 		{:else}
-			<div class="mb-3 flex items-center justify-between">
-				<p class="text-sm text-zinc-500">
-					Values are masked by default. Reveal triggers an audited backend call.
-				</p>
-				<Button variant="secondary" onclick={() => reload(!revealed)}>
-					{revealed ? 'Hide values' : 'Reveal values (audited)'}
-				</Button>
-			</div>
-
-			{#if rows.length === 0}
-				<p class="text-sm text-zinc-500">No shared env vars yet.</p>
-			{:else}
+			<Card padded={false}>
+				{#snippet actions()}
+					<Button variant="ghost" size="sm" onclick={() => reload(!revealed)}>
+						{#if revealed}
+							<EyeOff class="h-3.5 w-3.5" />
+							Hide values
+						{:else}
+							<Eye class="h-3.5 w-3.5" />
+							Reveal (audited)
+						{/if}
+					</Button>
+				{/snippet}
 				<table class="w-full text-sm">
-					<thead class="text-left text-xs uppercase text-zinc-500">
-						<tr>
-							<th class="pb-2">Key</th>
-							<th class="pb-2">Value</th>
-							<th class="pb-2">Updated</th>
-							<th class="pb-2"></th>
+					<thead
+						class="text-left text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+					>
+						<tr class="border-b border-[var(--color-border)]">
+							<th class="px-5 py-2.5">Key</th>
+							<th class="px-5 py-2.5">Value</th>
+							<th class="px-5 py-2.5">Updated</th>
+							<th class="px-5 py-2.5"></th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each rows as r}
-							<tr class="border-t border-zinc-100">
-								<td class="py-2 font-mono">{r.key}</td>
-								<td class="py-2 font-mono text-xs">
+							<tr
+								class="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-bg-subtle)]"
+							>
+								<td class="px-5 py-2.5 font-mono text-[var(--color-fg)]">{r.key}</td>
+								<td class="px-5 py-2.5 font-mono text-xs">
 									{#if revealed && r.value !== undefined}
-										<code class="rounded bg-zinc-50 px-2 py-0.5 text-zinc-800">{r.value}</code>
+										<code
+											class="rounded bg-[var(--color-bg-subtle)] px-2 py-0.5 text-[var(--color-fg)]"
+										>
+											{r.value}
+										</code>
 									{:else if r.hasValue}
-										<span class="text-zinc-400">••••••</span>
+										<span class="text-[var(--color-fg-subtle)]">••••••</span>
 									{:else}
-										<span class="text-zinc-400">(empty)</span>
+										<span class="text-[var(--color-fg-subtle)]">(empty)</span>
 									{/if}
 								</td>
-								<td class="py-2 text-zinc-500">
+								<td class="px-5 py-2.5 text-xs text-[var(--color-fg-muted)]">
 									{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : '—'}
 								</td>
-								<td class="py-2 text-right">
+								<td class="px-5 py-2.5 text-right">
 									<button
-										class="text-sm text-red-600 hover:underline"
+										class="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-danger)] hover:underline"
 										onclick={() => remove(r.key)}
 									>
+										<Trash2 class="h-3.5 w-3.5" />
 										Delete
 									</button>
 								</td>
@@ -140,30 +156,39 @@
 						{/each}
 					</tbody>
 				</table>
-			{/if}
+			</Card>
+		{/if}
 
+		<Card title="Add / update">
 			<form
-				class="mt-4 grid grid-cols-[1fr_2fr_auto] items-end gap-2"
+				class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_2fr_auto]"
 				onsubmit={(e) => {
 					e.preventDefault();
 					void add();
 				}}
 			>
 				<div>
-					<label for="newkey" class="mb-1 block text-xs text-zinc-500">Key</label>
-					<Input id="newkey" bind:value={newKey} placeholder="SENTRY_DSN" />
+					<label for="newkey" class="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]">
+						Key
+					</label>
+					<Input id="newkey" bind:value={newKey} placeholder="SENTRY_DSN" mono />
 				</div>
 				<div>
-					<label for="newvalue" class="mb-1 block text-xs text-zinc-500">Value</label>
+					<label
+						for="newvalue"
+						class="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]"
+					>
+						Value
+					</label>
 					<Input id="newvalue" bind:value={newValue} placeholder="https://…" />
 				</div>
 				<Button type="submit" disabled={saving || !newKey}>
-					{saving ? 'Saving…' : 'Add / Update'}
+					{saving ? 'Saving…' : 'Save'}
 				</Button>
 			</form>
 			{#if formError}
-				<div class="mt-2 text-sm text-red-600">{formError}</div>
+				<div class="mt-2 text-sm text-[var(--color-danger)]">{formError}</div>
 			{/if}
-		{/if}
-	</Card>
+		</Card>
+	{/if}
 </div>

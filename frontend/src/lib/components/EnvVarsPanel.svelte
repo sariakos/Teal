@@ -12,9 +12,11 @@
 	import Button from './Button.svelte';
 	import Card from './Card.svelte';
 	import Input from './Input.svelte';
+	import Badge from './Badge.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
 	import { dirty } from '$lib/stores/dirty.svelte';
+	import { Eye, EyeOff, Trash2, Plus } from '@lucide/svelte';
 
 	let { slug }: { slug: string } = $props();
 
@@ -326,27 +328,30 @@
 </script>
 
 <div class="space-y-6">
-	<Card title="Required by compose">
-		<p class="mb-3 text-sm text-zinc-500">
-			Every variable referenced in this app's compose file. Set values here and they flow into
-			both <code>docker compose</code> interpolation and the running containers.
-		</p>
+	<Card
+		title="Required by compose"
+		description="Every variable referenced in this app's compose. Set values here and they flow into both interpolation and the running containers."
+	>
 		{#if requiredLoading}
-			<p class="text-sm text-zinc-500">Loading…</p>
+			<p class="text-sm text-[var(--color-fg-muted)]">Loading…</p>
 		{:else if requiredError}
-			<p class="text-sm text-red-600">{requiredError}</p>
+			<p class="text-sm text-[var(--color-danger)]">{requiredError}</p>
 		{:else if requiredSource === 'none'}
-			<p class="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
+			<p
+				class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-subtle)] px-3 py-2 text-sm text-[var(--color-fg-muted)]"
+			>
 				{requiredHint || 'No compose available yet — deploy at least once so Teal can scan.'}
 			</p>
 		{:else if required.length === 0}
-			<p class="text-sm text-zinc-500">
+			<p class="text-sm text-[var(--color-fg-muted)]">
 				This compose doesn't reference any env vars. Nothing to configure here.
 			</p>
 		{:else}
-			<div class="overflow-hidden rounded-md border border-zinc-200">
+			<div class="overflow-hidden rounded-md border border-[var(--color-border)]">
 				<table class="w-full text-sm">
-					<thead class="bg-zinc-50 text-xs uppercase text-zinc-500">
+					<thead
+						class="bg-[var(--color-bg-subtle)] text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+					>
 						<tr>
 							<th class="px-3 py-2 text-left">Variable</th>
 							<th class="px-3 py-2 text-left">Status</th>
@@ -354,55 +359,65 @@
 							<th class="px-3 py-2 text-right"></th>
 						</tr>
 					</thead>
-					<tbody class="divide-y divide-zinc-100">
+					<tbody class="divide-y divide-[var(--color-border)]">
 						{#each required as v (v.name)}
 							<tr>
 								<td class="px-3 py-2 align-top">
-									<div class="font-mono text-zinc-800">{v.name}</div>
+									<div class="font-mono text-[var(--color-fg)]">{v.name}</div>
 									{#if v.sources.length > 0}
-										<div class="mt-0.5 truncate text-xs text-zinc-500" title={v.sources.join('\n')}>
+										<div
+											class="mt-0.5 truncate text-xs text-[var(--color-fg-muted)]"
+											title={v.sources.join('\n')}
+										>
 											{v.sources[0]}{v.sources.length > 1 ? ` +${v.sources.length - 1}` : ''}
 										</div>
 									{/if}
 								</td>
 								<td class="px-3 py-2 align-top">
 									{#if v.status === 'set'}
-										<span class="rounded bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-800">set</span>
+										<Badge tone="success" size="sm">set</Badge>
 									{:else if v.status === 'shared'}
-										<span class="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">shared</span>
+										<Badge tone="info" size="sm">shared</Badge>
 									{:else if v.status === 'default'}
-										<span class="rounded bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">uses default</span>
+										<Badge tone="neutral" size="sm">uses default</Badge>
 									{:else if v.status === 'unclaimed'}
-										<span class="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">shared (not opted in)</span>
+										<Badge tone="warning" size="sm">shared (not opted in)</Badge>
 									{:else}
-										<span class="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">missing</span>
+										<Badge tone="danger" size="sm">missing</Badge>
 									{/if}
 								</td>
 								<td class="px-3 py-2 align-top">
 									{#if v.status === 'missing' || v.status === 'default'}
 										<Input
+											size="sm"
 											bind:value={inlineValues[v.name]}
-											placeholder={v.defaultValue ? `default: ${v.defaultValue}` : 'set value'}
+											placeholder={v.defaultValue
+												? `default: ${v.defaultValue}`
+												: 'set value'}
 										/>
 									{:else if v.status === 'set'}
-										<span class="text-xs text-zinc-500">configured below</span>
+										<span class="text-xs text-[var(--color-fg-subtle)]">configured below</span>
 									{:else if v.status === 'shared'}
-										<span class="text-xs text-zinc-500">from shared env</span>
+										<span class="text-xs text-[var(--color-fg-subtle)]">from shared env</span>
 									{:else}
-										<span class="text-xs text-zinc-500">platform-wide value exists</span>
+										<span class="text-xs text-[var(--color-fg-subtle)]">
+											platform-wide value exists
+										</span>
 									{/if}
 								</td>
 								<td class="px-3 py-2 text-right align-top">
 									{#if v.status === 'missing' || v.status === 'default'}
 										<Button
 											variant="secondary"
-											disabled={inlineSavingKey === v.name || !(inlineValues[v.name] ?? '').trim()}
+											size="sm"
+											disabled={inlineSavingKey === v.name ||
+												!(inlineValues[v.name] ?? '').trim()}
 											onclick={() => setInline(v.name)}
 										>
 											{inlineSavingKey === v.name ? 'Saving…' : 'Set'}
 										</Button>
 									{:else if v.status === 'unclaimed'}
-										<Button variant="secondary" onclick={() => claimShared(v.name)}>
+										<Button variant="secondary" size="sm" onclick={() => claimShared(v.name)}>
 											Opt in
 										</Button>
 									{/if}
@@ -412,155 +427,180 @@
 					</tbody>
 				</table>
 			</div>
-			<p class="mt-2 text-xs text-zinc-500">Source: {requiredSource}</p>
+			<p class="mt-2 text-xs text-[var(--color-fg-subtle)]">Source: {requiredSource}</p>
 		{/if}
 	</Card>
 
 	<Card title="Per-app environment variables">
+		{#snippet actions()}
+			<Button variant="ghost" size="sm" onclick={() => reload(!revealed)}>
+				{#if revealed}
+					<EyeOff class="h-3.5 w-3.5" />
+					Hide
+				{:else}
+					<Eye class="h-3.5 w-3.5" />
+					Reveal (audited)
+				{/if}
+			</Button>
+		{/snippet}
 		{#if listError}
-			<div class="text-sm text-red-600">{listError}</div>
+			<div class="text-sm text-[var(--color-danger)]">{listError}</div>
 		{:else if loading}
-			<div class="text-sm text-zinc-500">Loading…</div>
+			<div class="text-sm text-[var(--color-fg-muted)]">Loading…</div>
 		{:else}
 			<div class="mb-3 flex items-center justify-between gap-3">
-				<p class="text-sm text-zinc-500">
+				<p class="text-sm text-[var(--color-fg-muted)]">
 					Injected into the container as KEY=VALUE on every deploy.
 				</p>
-				<div class="flex items-center gap-2">
-					<div class="inline-flex overflow-hidden rounded-md border border-zinc-300 text-xs">
-						<button
-							type="button"
-							class="px-3 py-1.5 {viewMode === 'table'
-								? 'bg-zinc-100 text-zinc-900'
-								: 'bg-white text-zinc-500 hover:text-zinc-800'}"
-							onclick={switchToTable}
-						>
-							Table
-						</button>
-						<button
-							type="button"
-							class="border-l border-zinc-300 px-3 py-1.5 {viewMode === 'editor'
-								? 'bg-zinc-100 text-zinc-900'
-								: 'bg-white text-zinc-500 hover:text-zinc-800'}"
-							onclick={() => void switchToEditor()}
-						>
-							.env editor
-						</button>
-					</div>
-					<Button variant="secondary" onclick={() => reload(!revealed)}>
-						{revealed ? 'Hide values' : 'Reveal values (audited)'}
-					</Button>
+				<div class="inline-flex gap-1 rounded-md bg-[var(--color-bg-subtle)] p-0.5 text-xs">
+					<button
+						type="button"
+						class="rounded px-2.5 py-1 transition-colors {viewMode === 'table'
+							? 'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]'
+							: 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'}"
+						onclick={switchToTable}
+					>
+						Table
+					</button>
+					<button
+						type="button"
+						class="rounded px-2.5 py-1 transition-colors {viewMode === 'editor'
+							? 'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]'
+							: 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'}"
+						onclick={() => void switchToEditor()}
+					>
+						.env editor
+					</button>
 				</div>
 			</div>
 
 			{#if viewMode === 'editor'}
-				<p class="mb-2 text-xs text-zinc-500">
-					Edit as a .env file. Lines like <code>KEY=value</code>; comments with <code>#</code>;
-					blank lines ignored. Values rendered as <code>********</code> are masked
-					placeholders — leave them as-is to keep the existing value, or replace with a new one.
+				<p class="mb-2 text-xs text-[var(--color-fg-subtle)]">
+					Edit as a .env file. <code>KEY=value</code> per line; <code>#</code> comments;
+					<code>********</code> placeholders are masked existing values — leave them or replace.
 				</p>
 				<textarea
 					bind:value={editorDraft}
 					rows={Math.max(8, editorDraft.split('\n').length + 1)}
 					spellcheck="false"
-					class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 font-mono text-xs text-zinc-800 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500"
+					class="block w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg)] px-3 py-2 font-mono text-xs text-[var(--color-fg)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
 					placeholder={'DATABASE_URL=postgres://…\nAUTH_SECRET=…\nLOG_LEVEL=info'}
 				></textarea>
 				{#if editorError}
-					<div class="mt-2 text-sm text-red-600">{editorError}</div>
+					<div class="mt-2 text-sm text-[var(--color-danger)]">{editorError}</div>
 				{/if}
 				<div class="mt-3 flex items-center justify-between">
-					<p class="text-xs text-zinc-500">
-						{rows.length} key{rows.length === 1 ? '' : 's'} currently set. Saving diffs against the
-						current set: missing keys get deleted (with confirm), changed values get upserted.
+					<p class="text-xs text-[var(--color-fg-subtle)]">
+						{rows.length} key{rows.length === 1 ? '' : 's'} currently set.
 					</p>
-					<Button
-						onclick={() => void saveEditor()}
-						disabled={editorSaving}
-					>
+					<Button onclick={() => void saveEditor()} disabled={editorSaving}>
 						{editorSaving ? 'Saving…' : 'Save changes'}
 					</Button>
 				</div>
 			{:else if rows.length === 0}
-				<p class="text-sm text-zinc-500">No env vars configured.</p>
+				<p class="text-sm text-[var(--color-fg-muted)]">No env vars configured.</p>
 			{:else}
-				<table class="w-full text-sm">
-					<thead class="text-left text-xs uppercase text-zinc-500">
-						<tr>
-							<th class="pb-2">Key</th>
-							<th class="pb-2">Value</th>
-							<th class="pb-2">Updated</th>
-							<th class="pb-2"></th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each rows as r}
-							<tr class="border-t border-zinc-100">
-								<td class="py-2 font-mono">{r.key}</td>
-								<td class="py-2 font-mono text-xs">
-									{#if revealed && r.value !== undefined}
-										<code class="rounded bg-zinc-50 px-2 py-0.5 text-zinc-800">{r.value}</code>
-									{:else if r.hasValue}
-										<span class="text-zinc-400">••••••</span>
-									{:else}
-										<span class="text-zinc-400">(empty)</span>
-									{/if}
-								</td>
-								<td class="py-2 text-zinc-500">
-									{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : '—'}
-								</td>
-								<td class="py-2 text-right">
-									<button
-										class="text-sm text-red-600 hover:underline"
-										onclick={() => deleteEnvVar(r.key)}
-									>
-										Delete
-									</button>
-								</td>
+				<div class="overflow-hidden rounded-md border border-[var(--color-border)]">
+					<table class="w-full text-sm">
+						<thead
+							class="bg-[var(--color-bg-subtle)] text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+						>
+							<tr>
+								<th class="px-3 py-2 text-left">Key</th>
+								<th class="px-3 py-2 text-left">Value</th>
+								<th class="px-3 py-2 text-left">Updated</th>
+								<th class="px-3 py-2 text-right"></th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody class="divide-y divide-[var(--color-border)]">
+							{#each rows as r}
+								<tr>
+									<td class="px-3 py-2 font-mono text-[var(--color-fg)]">{r.key}</td>
+									<td class="px-3 py-2 font-mono text-xs">
+										{#if revealed && r.value !== undefined}
+											<code
+												class="rounded bg-[var(--color-bg-subtle)] px-2 py-0.5 text-[var(--color-fg)]"
+											>
+												{r.value}
+											</code>
+										{:else if r.hasValue}
+											<span class="text-[var(--color-fg-subtle)]">••••••</span>
+										{:else}
+											<span class="text-[var(--color-fg-subtle)]">(empty)</span>
+										{/if}
+									</td>
+									<td class="px-3 py-2 text-xs text-[var(--color-fg-muted)]">
+										{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : '—'}
+									</td>
+									<td class="px-3 py-2 text-right">
+										<button
+											class="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-danger)] hover:underline"
+											onclick={() => deleteEnvVar(r.key)}
+										>
+											<Trash2 class="h-3.5 w-3.5" />
+											Delete
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
 			{/if}
 
 			{#if viewMode === 'table'}
 				<form
-					class="mt-4 grid grid-cols-[1fr_2fr_auto] items-end gap-2"
+					class="mt-4 grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_2fr_auto]"
 					onsubmit={(e) => {
 						e.preventDefault();
 						void addEnvVar();
 					}}
 				>
 					<div>
-						<label for="newkey" class="mb-1 block text-xs text-zinc-500">Key</label>
-						<Input id="newkey" bind:value={newKey} placeholder="DATABASE_URL" />
+						<label
+							for="newkey"
+							class="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]"
+						>
+							Key
+						</label>
+						<Input id="newkey" bind:value={newKey} placeholder="DATABASE_URL" mono />
 					</div>
 					<div>
-						<label for="newvalue" class="mb-1 block text-xs text-zinc-500">Value</label>
+						<label
+							for="newvalue"
+							class="mb-1 block text-xs font-medium text-[var(--color-fg-muted)]"
+						>
+							Value
+						</label>
 						<Input id="newvalue" bind:value={newValue} placeholder="postgres://…" />
 					</div>
 					<Button type="submit" disabled={saving || !newKey}>
-						{saving ? 'Saving…' : 'Add / Update'}
+						<Plus class="h-4 w-4" />
+						{saving ? 'Saving…' : 'Save'}
 					</Button>
 				</form>
 				{#if formError}
-					<div class="mt-2 text-sm text-red-600">{formError}</div>
+					<div class="mt-2 text-sm text-[var(--color-danger)]">{formError}</div>
 				{/if}
 			{/if}
 		{/if}
 	</Card>
 
-	<Card title="Shared env vars">
-		<p class="mb-3 text-sm text-zinc-500">
-			Pick which platform-wide shared keys this app should receive. Per-app keys above shadow
-			shared keys with the same name.
-		</p>
+	<Card
+		title="Shared env vars"
+		description="Pick which platform-wide shared keys this app receives. Per-app keys shadow shared keys with the same name."
+	>
 		{#if sharedListing.available.length === 0}
-			<p class="text-sm text-zinc-500">No shared env vars are defined yet (admin sets them).</p>
+			<p class="text-sm text-[var(--color-fg-muted)]">
+				No shared env vars are defined yet (admin sets them at Settings → Shared env).
+			</p>
 		{:else}
-			<ul class="space-y-1 text-sm">
+			<div class="grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
 				{#each sharedListing.available as key}
-					<li class="flex items-center gap-2">
+					<label
+						for={`shared-${key}`}
+						class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[var(--color-bg-subtle)]"
+					>
 						<input
 							type="checkbox"
 							id={`shared-${key}`}
@@ -568,19 +608,20 @@
 							onchange={(e) =>
 								toggleSharedKey(key, (e.currentTarget as HTMLInputElement).checked)}
 							disabled={savingShared}
+							class="h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
 						/>
-						<label class="font-mono" for={`shared-${key}`}>{key}</label>
-					</li>
+						<span class="font-mono text-[var(--color-fg)]">{key}</span>
+					</label>
 				{/each}
-			</ul>
+			</div>
 			{#if sharedListing.included.some((k) => !sharedListing.available.includes(k))}
-				<p class="mt-3 text-sm text-amber-700">
+				<p class="mt-3 text-xs text-[var(--color-warning-soft-fg)]">
 					{sharedListing.included.filter((k) => !sharedListing.available.includes(k)).length} opted-in
 					key(s) no longer exist as shared vars; they'll be skipped on deploy.
 				</p>
 			{/if}
 			{#if sharedError}
-				<div class="mt-2 text-sm text-red-600">{sharedError}</div>
+				<div class="mt-2 text-sm text-[var(--color-danger)]">{sharedError}</div>
 			{/if}
 		{/if}
 	</Card>

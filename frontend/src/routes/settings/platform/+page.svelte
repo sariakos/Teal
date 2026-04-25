@@ -23,8 +23,10 @@
 	import Button from '$lib/components/Button.svelte';
 	import Card from '$lib/components/Card.svelte';
 	import Input from '$lib/components/Input.svelte';
+	import PageHeader from '$lib/components/PageHeader.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dialog } from '$lib/stores/dialog.svelte';
+	import { AlertTriangle, RotateCw } from '@lucide/svelte';
 
 	let acmeEmail = $state('');
 	let acmeStaging = $state(false);
@@ -126,16 +128,14 @@
 </script>
 
 <div class="space-y-6">
-	<div>
-		<h1 class="text-2xl font-semibold text-zinc-900">Platform settings</h1>
-		<p class="mt-1 text-sm text-zinc-500">
-			Affect every app served by this Teal instance. Admin only.
-		</p>
-	</div>
+	<PageHeader
+		title="Platform settings"
+		description="Affect every app served by this Teal instance. Admin only."
+	/>
 
 	<Card title="HTTPS / ACME">
 		{#if loading}
-			<div class="text-sm text-zinc-500">Loading…</div>
+			<div class="text-sm text-[var(--color-fg-muted)]">Loading…</div>
 		{:else}
 			<form
 				class="space-y-4"
@@ -145,35 +145,47 @@
 				}}
 			>
 				<div>
-					<label for="acme-email" class="mb-1 block text-sm font-medium text-zinc-700">
+					<label
+						for="acme-email"
+						class="mb-1 block text-sm font-medium text-[var(--color-fg)]"
+					>
 						ACME registration email
 					</label>
-					<Input
-						id="acme-email"
-						bind:value={acmeEmail}
-						placeholder="ops@example.com"
-					/>
-					<p class="mt-1 text-xs text-zinc-500">
+					<Input id="acme-email" bind:value={acmeEmail} placeholder="ops@example.com" />
+					<p class="mt-1 text-xs text-[var(--color-fg-subtle)]">
 						Required by Let's Encrypt. Setting any value here also enables the HTTPS entrypoint.
 					</p>
 				</div>
-				<label class="flex items-center gap-2 text-sm text-zinc-700">
-					<input type="checkbox" bind:checked={acmeStaging} />
+				<label class="flex items-center gap-2 text-sm text-[var(--color-fg)]">
+					<input
+						type="checkbox"
+						bind:checked={acmeStaging}
+						class="h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+					/>
 					Use Let's Encrypt staging (test certs; no rate limits)
 				</label>
-				<label class="flex items-center gap-2 text-sm text-zinc-700">
-					<input type="checkbox" bind:checked={httpsRedirect} />
+				<label class="flex items-center gap-2 text-sm text-[var(--color-fg)]">
+					<input
+						type="checkbox"
+						bind:checked={httpsRedirect}
+						class="h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+					/>
 					Redirect plain HTTP to HTTPS (308) for every app
 				</label>
 				{#if restartHint}
-					<div class="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
-						ACME changes affect Traefik's static config. Restart the Traefik container so the new
-						config is loaded:
-						<code class="mt-1 block font-mono text-xs">docker compose restart traefik</code>
+					<div
+						class="flex items-start gap-2 rounded-md border border-[var(--color-warning-soft)] bg-[var(--color-warning-soft)] p-3 text-sm text-[var(--color-warning-soft-fg)]"
+					>
+						<AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+						<div>
+							ACME changes affect Traefik's static config. Restart the Traefik container so the
+							new config is loaded:
+							<code class="mt-1 block font-mono text-xs">docker compose restart traefik</code>
+						</div>
 					</div>
 				{/if}
 				{#if error}
-					<div class="text-sm text-red-600">{error}</div>
+					<div class="text-sm text-[var(--color-danger)]">{error}</div>
 				{/if}
 				<div class="flex justify-end">
 					<Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
@@ -182,11 +194,10 @@
 		{/if}
 	</Card>
 
-	<Card title="SMTP (failure emails)">
-		<p class="mb-3 text-sm text-zinc-500">
-			Apps with a notification email get a message when a deploy fails. Leave the host empty to
-			disable email entirely.
-		</p>
+	<Card
+		title="SMTP (failure emails)"
+		description="Apps with a notification email get a message when a deploy fails. Leave the host empty to disable email entirely."
+	>
 		<form
 			class="space-y-3"
 			onsubmit={(e) => {
@@ -194,30 +205,44 @@
 				void save();
 			}}
 		>
-			<div class="grid grid-cols-2 gap-3">
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<div>
-					<label for="smtphost" class="mb-1 block text-sm font-medium text-zinc-700">Host</label>
+					<label for="smtphost" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+						Host
+					</label>
 					<Input id="smtphost" bind:value={smtpHost} placeholder="smtp.example.com" />
 				</div>
 				<div>
-					<label for="smtpport" class="mb-1 block text-sm font-medium text-zinc-700">Port</label>
+					<label for="smtpport" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+						Port
+					</label>
 					<Input id="smtpport" bind:value={smtpPort} placeholder="587" />
 				</div>
 				<div>
-					<label for="smtpuser" class="mb-1 block text-sm font-medium text-zinc-700">User</label>
+					<label for="smtpuser" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+						User
+					</label>
 					<Input id="smtpuser" bind:value={smtpUser} />
 				</div>
 				<div>
-					<label for="smtppass" class="mb-1 block text-sm font-medium text-zinc-700">Password</label>
+					<label for="smtppass" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+						Password
+					</label>
 					<Input id="smtppass" type="password" bind:value={smtpPass} />
 				</div>
-				<div class="col-span-2">
-					<label for="smtpfrom" class="mb-1 block text-sm font-medium text-zinc-700">From</label>
+				<div class="sm:col-span-2">
+					<label for="smtpfrom" class="mb-1 block text-sm font-medium text-[var(--color-fg)]">
+						From
+					</label>
 					<Input id="smtpfrom" bind:value={smtpFrom} placeholder="teal@example.com" />
 				</div>
 			</div>
-			<label class="flex items-center gap-2 text-sm text-zinc-700">
-				<input type="checkbox" bind:checked={smtpStartTLS} />
+			<label class="flex items-center gap-2 text-sm text-[var(--color-fg)]">
+				<input
+					type="checkbox"
+					bind:checked={smtpStartTLS}
+					class="h-4 w-4 rounded border-[var(--color-border-strong)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]"
+				/>
 				Use STARTTLS
 			</label>
 			<div class="flex justify-end">
@@ -226,14 +251,13 @@
 		</form>
 	</Card>
 
-	<Card title="Update platform">
-		<p class="mb-3 text-sm text-zinc-500">
-			Writes a restart marker and exits the Teal process. Your supervisor (systemd / docker
-			<code>restart: unless-stopped</code>) starts the new image. Pull the latest tag first
-			(<code>docker compose pull</code>).
-		</p>
+	<Card
+		title="Update platform"
+		description="Writes a restart marker and exits the Teal process. Your supervisor restarts it on the new image. Pull the latest tag first (docker compose pull)."
+	>
 		<div class="flex justify-end">
 			<Button variant="danger" onclick={selfUpdate} disabled={updateRequested}>
+				<RotateCw class="h-4 w-4" />
 				{updateRequested ? 'Restarting…' : 'Update platform'}
 			</Button>
 		</div>

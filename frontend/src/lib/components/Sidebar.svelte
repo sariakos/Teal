@@ -1,42 +1,106 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import {
+		LayoutDashboard,
+		PlusCircle,
+		HardDrive,
+		Users,
+		KeyRound,
+		Globe,
+		Server
+	} from '@lucide/svelte';
+	import GithubMark from './GithubMark.svelte';
+	import type { Component } from 'svelte';
 
 	interface NavItem {
 		href: string;
 		label: string;
+		icon: Component;
 	}
 
-	const items: NavItem[] = [
-		{ href: '/', label: 'Dashboard' },
-		{ href: '/apps/new', label: 'New App' },
-		{ href: '/volumes', label: 'Volumes' },
-		{ href: '/settings/users', label: 'Users' },
-		{ href: '/settings/apikeys', label: 'API Keys' },
-		{ href: '/settings/shared-env', label: 'Shared env' },
-		{ href: '/settings/platform', label: 'Platform' },
-		{ href: '/settings/github-app', label: 'GitHub App' }
+	interface NavGroup {
+		label?: string;
+		items: NavItem[];
+	}
+
+	const groups: NavGroup[] = [
+		{
+			items: [
+				{ href: '/', label: 'Dashboard', icon: LayoutDashboard },
+				{ href: '/apps/new', label: 'New app', icon: PlusCircle },
+				{ href: '/volumes', label: 'Volumes', icon: HardDrive }
+			]
+		},
+		{
+			label: 'Settings',
+			items: [
+				{ href: '/settings/users', label: 'Users', icon: Users },
+				{ href: '/settings/apikeys', label: 'API keys', icon: KeyRound },
+				{ href: '/settings/shared-env', label: 'Shared env', icon: Globe },
+				{ href: '/settings/platform', label: 'Platform', icon: Server },
+				{ href: '/settings/github-app', label: 'GitHub App', icon: GithubMark }
+			]
+		}
 	];
 
 	function isActive(href: string): boolean {
 		if (href === '/') return page.url.pathname === '/';
+		if (href === '/apps/new') return page.url.pathname === '/apps/new';
 		return page.url.pathname.startsWith(href);
 	}
 </script>
 
-<aside class="w-56 shrink-0 border-r border-zinc-200 bg-white">
-	<div class="px-5 py-4 text-lg font-semibold text-teal-700">Teal</div>
-	<nav class="px-2 py-2">
-		{#each items as item}
-			<a
-				href={item.href}
-				class="block rounded-md px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100 {isActive(
-					item.href
-				)
-					? 'bg-teal-50 font-medium text-teal-700'
-					: ''}"
+<aside
+	class="flex w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]"
+>
+	<a
+		href="/"
+		class="flex items-center gap-2 px-5 py-4 text-base font-semibold text-[var(--color-fg)] no-underline hover:no-underline"
+	>
+		<span
+			class="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[var(--shadow-xs)]"
+		>
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="h-4 w-4"
+				aria-hidden="true"
 			>
-				{item.label}
-			</a>
+				<path d="M4 6h16M9 12h11M4 18h16" />
+			</svg>
+		</span>
+		Teal
+	</a>
+	<nav class="flex-1 space-y-5 overflow-y-auto px-3 pb-6">
+		{#each groups as g}
+			<div>
+				{#if g.label}
+					<div
+						class="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-fg-subtle)]"
+					>
+						{g.label}
+					</div>
+				{/if}
+				<div class="space-y-0.5">
+					{#each g.items as item}
+						{@const active = isActive(item.href)}
+						{@const Icon = item.icon}
+						<a
+							href={item.href}
+							class="flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors no-underline hover:no-underline {active
+								? 'bg-[var(--color-accent-soft)] font-medium text-[var(--color-accent-soft-fg)]'
+								: 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-fg)]'}"
+						>
+							<Icon class="h-4 w-4 shrink-0" />
+							<span>{item.label}</span>
+						</a>
+					{/each}
+				</div>
+			</div>
 		{/each}
 	</nav>
 </aside>

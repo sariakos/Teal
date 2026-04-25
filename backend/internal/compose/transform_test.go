@@ -508,6 +508,71 @@ func TestTransformPreservesUserSuppliedBuildArgs(t *testing.T) {
 	}
 }
 
+func TestTransformPinsTopLevelVolumesAcrossColors(t *testing.T) {
+	// Without pinning, compose prefixes each volume with the project
+	// name (which includes the color), so blue and green see
+	// different Docker volumes — the database "loses" rows on every
+	// other deploy. Pin the volume name to <slug>_<key> so both
+	// colors mount the same Docker volume.
+	for _, color := range []domain.Color{domain.ColorBlue, domain.ColorGreen} {
+		in := TransformInput{
+			UserYAML: `services:
+  postgres:
+    image: postgres:16
+    volumes:
+      - db-data:/var/lib/postgresql/data
+volumes:
+  db-data:
+`,
+			AppSlug: "wedding-planner", Color: color,
+		}
+		out, err := Transform(in)
+		if err != nil {
+			t.Fatalf("Transform(%v): %v", color, err)
+		}
+		doc := reparse(t, out.YAML)
+		vols, _ := doc["volumes"].(map[string]any)
+		spec, _ := vols["db-data"].(map[string]any)
+		if spec == nil {
+			t.Fatalf("[%s] volumes.db-data: missing or wrong shape: %v", color, vols)
+		}
+		if name, _ := spec["name"].(string); name != "wedding-planner_db-data" {
+			t.Errorf("[%s] volumes.db-data.name = %q, want wedding-planner_db-data", color, name)
+		}
+	}
+}
+
+func TestTransformRespectsExternalVolume(t *testing.T) {
+	// User said "this volume is external — don't touch it." Pinning a
+	// name on an external volume would break their setup.
+	in := TransformInput{
+		UserYAML: `services:
+  postgres:
+    image: postgres:16
+    volumes:
+      - shared-pg:/var/lib/postgresql/data
+volumes:
+  shared-pg:
+    external: true
+    name: my-shared-pg
+`,
+		AppSlug: "x", Color: domain.ColorBlue,
+	}
+	out, err := Transform(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := reparse(t, out.YAML)
+	vols, _ := doc["volumes"].(map[string]any)
+	spec, _ := vols["shared-pg"].(map[string]any)
+	if name, _ := spec["name"].(string); name != "my-shared-pg" {
+		t.Errorf("user's external name overridden: got %q, want my-shared-pg", name)
+	}
+	if ext, _ := spec["external"].(bool); !ext {
+		t.Errorf("external flag stripped")
+	}
+}
+
 func TestTransformDeclaresTopLevelDefaultNetwork(t *testing.T) {
 	// Regression: declaring platform_proxy at top level without also
 	// declaring `default:` caused some compose versions to skip

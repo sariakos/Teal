@@ -182,6 +182,14 @@ func Transform(in TransformInput) (TransformOutput, error) {
 		}
 	}
 
+	// Pin top-level named volumes so they survive blue/green flips.
+	// Without this, compose's project-name prefix gives blue and
+	// green their own copies (`<slug>-blue_db-data` vs `<slug>-green
+	// _db-data`) and the database "loses" its rows on every other
+	// deploy. Set `name: <slug>_<vol>` (color-stripped) so both
+	// projects mount the same Docker volume.
+	pinSharedVolumes(doc.root, in.AppSlug)
+
 	doc.putServices(services)
 
 	rendered, err := Render(doc)
@@ -455,6 +463,49 @@ func setTealLabels(svc map[string]any, slug string, color domain.Color) {
 //
 // User-supplied top-level networks are preserved — only the two keys
 // we manage are written.
+// pinSharedVolumes rewrites the top-level `volumes:` map so each
+// managed (non-external) volume gets an explicit `name: <slug>_<key>`.
+// That makes both blue and green compose projects mount the SAME
+// Docker volume — without the pin, compose prefixes the volume with
+// the project name (which includes the color) and the two stacks
+// silently diverge: postgres on blue has data, postgres on green
+// starts empty.
+//
+// User-managed cases left alone:
+//   - external: true     → operator already owns naming; respect it
+//   - explicit name: ... → operator already pinned; respect it
+//   - bind mounts        → string-form, no project prefixing applies
+//
+// New volumes get name=<slug>_<key>, NOT <slug>-<color>_<key>. The
+// color is intentionally stripped so the volume persists across the
+// flip.
+func pinSharedVolumes(root map[string]any, slug string) {
+	rawVols, ok := root["volumes"]
+	if !ok {
+		return
+	}
+	vols, ok := rawVols.(map[string]any)
+	if !ok {
+		return
+	}
+	for name, raw := range vols {
+		// nil entry (`db-data:` with no body) → promote to map.
+		spec, _ := raw.(map[string]any)
+		if spec == nil {
+			spec = map[string]any{}
+		}
+		if ext, _ := spec["external"].(bool); ext {
+			continue
+		}
+		if existing, _ := spec["name"].(string); existing != "" {
+			continue
+		}
+		spec["name"] = slug + "_" + name
+		vols[name] = spec
+	}
+	root["volumes"] = vols
+}
+
 func declareExternalPlatformNetwork(root map[string]any) {
 	nets, _ := root["networks"].(map[string]any)
 	if nets == nil {

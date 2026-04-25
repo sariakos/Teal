@@ -408,6 +408,16 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		envFilePath = envPath
 	}
 
+	// Filter the env-var keys we feed into the build-arg + Dockerfile
+	// patch path. Some standard names (NODE_ENV especially) are
+	// either set inside the Dockerfile or expected to be unset so the
+	// framework picks its production default. Injecting them as
+	// ARG/ENV with whatever value the user typed in Teal can flip
+	// frameworks into a degraded mode — Next.js for example warns
+	// "non-standard NODE_ENV value" and falls back to a Pages-Router
+	// /_error template that breaks the build.
+	buildArgKeys := filterStandardBuildEnv(envRes.Keys)
+
 	tx, err := compose.Transform(compose.TransformInput{
 		UserYAML:       composeYAML,
 		AppSlug:        app.Slug,
@@ -417,7 +427,7 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 		CPULimit:       app.CPULimit,
 		MemoryLimit:    app.MemoryLimit,
 		AttachServices: attachServices,
-		BuildArgs:      envRes.Keys,
+		BuildArgs:      buildArgKeys,
 	})
 	if err != nil {
 		e.fail(ctx, app, dep, "transform: "+err.Error())
@@ -425,22 +435,19 @@ func (e *Engine) run(ctx context.Context, app domain.App, dep domain.Deployment)
 	}
 
 	// Patch the user's Dockerfile(s) in the checkout to declare ARG +
-	// ENV for every Teal-managed env var. Without this, the build.args
-	// we just injected via compose.Transform have no effect — Docker
-	// only honours --build-arg X=foo when the Dockerfile says ARG X.
-	// Patches are scoped to the workdir checkout (re-cloned each
-	// deploy); the user's repo is untouched.
-	if projectDir != "" && len(envRes.Keys) > 0 {
-		// Re-parse the rendered YAML to walk services. Cheaper to do
-		// this once here than to thread services through Transform's
-		// return.
+	// ENV for every filtered Teal-managed env var. Without this, the
+	// build.args we just injected via compose.Transform have no
+	// effect — Docker only honours --build-arg X=foo when the
+	// Dockerfile says ARG X. Patches are scoped to the workdir
+	// checkout (re-cloned each deploy); the user's repo is untouched.
+	if projectDir != "" && len(buildArgKeys) > 0 {
 		if servicesMap, perr := composeServicesMap(tx.YAML); perr == nil {
-			patched, perr := patchDockerfilesForArgs(projectDir, servicesMap, envRes.Keys)
+			patched, perr := patchDockerfilesForArgs(projectDir, servicesMap, buildArgKeys)
 			if perr != nil {
 				fmt.Fprintf(logFile, "[warn] dockerfile patch: %v (build may not see env vars)\n", perr)
 			}
 			for _, p := range patched {
-				fmt.Fprintf(logFile, "[info] patched %s — added ARG/ENV for %d Teal env var(s)\n", p, len(envRes.Keys))
+				fmt.Fprintf(logFile, "[info] patched %s — added ARG/ENV for %d Teal env var(s)\n", p, len(buildArgKeys))
 			}
 		} else {
 			fmt.Fprintf(logFile, "[warn] dockerfile patch: re-parse compose: %v\n", perr)

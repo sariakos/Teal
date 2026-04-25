@@ -72,6 +72,10 @@ func TestDiscoverEnvVars_EnvironmentBlockKeysAreReferences(t *testing.T) {
 }
 
 func TestDiscoverEnvVars_ListFormEnvironment(t *testing.T) {
+	// List-form rules:
+	//   - "KEY=${OTHER}"     → scan picks OTHER (interpolation)
+	//   - "KEY=production"   → literal, KEY skipped
+	//   - "KEY"              → bare, KEY added (inherit from host)
 	yaml := `services:
   app:
     image: my/app
@@ -88,10 +92,44 @@ func TestDiscoverEnvVars_ListFormEnvironment(t *testing.T) {
 	for _, r := range got {
 		saw[r.Name] = true
 	}
-	for _, want := range []string{"APP_URL", "NODE_ENV", "INHERITED_FROM_HOST"} {
+	for _, want := range []string{"APP_URL", "INHERITED_FROM_HOST"} {
 		if !saw[want] {
 			t.Errorf("%s missing — discovered: %#v", want, got)
 		}
+	}
+	if saw["NODE_ENV"] {
+		t.Errorf("NODE_ENV is a literal — should NOT be flagged as required: %#v", got)
+	}
+}
+
+func TestDiscoverEnvVars_LiteralMapValueIsNotRequired(t *testing.T) {
+	// Map-form variant of the same rule. NODE_ENV: production is a
+	// literal — the user can't set it via Teal (the value is baked
+	// in), so don't surface it as missing/required.
+	yaml := `services:
+  app:
+    image: my/app
+    environment:
+      NODE_ENV: production
+      APP_URL:                 # empty → inherit (do flag)
+      DATABASE_URL: ${DATABASE_URL}
+`
+	got, err := DiscoverEnvVars(yaml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saw := map[string]bool{}
+	for _, r := range got {
+		saw[r.Name] = true
+	}
+	if saw["NODE_ENV"] {
+		t.Errorf("NODE_ENV literal should be skipped, got %#v", got)
+	}
+	if !saw["APP_URL"] {
+		t.Errorf("APP_URL (empty) should be flagged: %#v", got)
+	}
+	if !saw["DATABASE_URL"] {
+		t.Errorf("DATABASE_URL (interpolation) should be flagged: %#v", got)
 	}
 }
 

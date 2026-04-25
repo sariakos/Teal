@@ -11,6 +11,46 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// reservedBuildEnvKeys is the small denylist of env-var names Teal
+// will NOT inject as ARG/ENV during build. They're either:
+//
+//   - framework-controlled (NODE_ENV is the canonical example: Next/
+//     Vite/Node interpret a non-standard value as "not production"
+//     and degrade — Next.js falls back to its Pages-Router /_error
+//     template, which breaks the build with the misleading "<Html>
+//     should not be imported outside of pages/_document" error)
+//   - container-runtime-controlled (PORT, HOSTNAME, USER are set by
+//     Docker / the orchestrator; overriding via ENV at build time
+//     can break the runtime image)
+//   - shell-internals (PATH, HOME, SHELL — wrong values brick the
+//     build container)
+//
+// These vars are still written to deploy.env (so the running
+// containers see them at compose `environment:` resolution time),
+// they're just not passed as build args.
+var reservedBuildEnvKeys = map[string]struct{}{
+	"NODE_ENV": {},
+	"PATH":     {},
+	"HOME":     {},
+	"SHELL":    {},
+	"USER":     {},
+	"HOSTNAME": {},
+	"PORT":     {},
+}
+
+// filterStandardBuildEnv returns keys minus reservedBuildEnvKeys.
+// Stable order (input is already sorted by hydrateEnv).
+func filterStandardBuildEnv(keys []string) []string {
+	out := keys[:0:0]
+	for _, k := range keys {
+		if _, reserved := reservedBuildEnvKeys[k]; reserved {
+			continue
+		}
+		out = append(out, k)
+	}
+	return out
+}
+
 // composeServicesMap re-parses a rendered compose YAML and returns
 // the top-level services: map. Returns an error if the YAML is
 // malformed or has no services key. Used by the engine to walk

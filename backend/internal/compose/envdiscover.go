@@ -123,19 +123,35 @@ func walk(node any, path string, acc *envAccumulator) {
 		for k, child := range v {
 			childPath := joinPath(path, k)
 			if isEnv {
-				// Map form: { KEY: value }. The KEY itself is a
-				// var reference; the value may also reference other
-				// vars (${OTHER_VAR}).
-				acc.note(k, childPath, false, "")
+				// Map form: { KEY: value }. The KEY is "needed by
+				// the container" when the value is empty (inherit
+				// from host env) or null (same). Literal string
+				// values are baked into compose — surfacing them as
+				// "required" leads to users overriding them via
+				// Teal's UI when nothing was missing in the first
+				// place (see e.g. NODE_ENV: production, where any
+				// override risks turning a standard value
+				// non-standard and breaking framework defaults).
+				switch cv := child.(type) {
+				case nil:
+					acc.note(k, childPath, false, "")
+				case string:
+					if cv == "" {
+						acc.note(k, childPath, false, "")
+					}
+					// Non-empty string: don't add the key, but DO
+					// scan it for interpolations (handled by the
+					// recursive walk below).
+				}
 			}
 			walk(child, childPath, acc)
 		}
 	case []any:
 		// Detect environment blocks in list form too:
 		//   environment:
-		//     - KEY=value
-		//     - KEY            (uses host env)
-		//     - KEY=${OTHER}
+		//     - KEY=value      (literal — skip)
+		//     - KEY            (bare — inherit from host, add)
+		//     - KEY=${OTHER}   (interpolation caught by scan)
 		isEnv := strings.HasSuffix(path, ".environment")
 		for i, child := range v {
 			elemPath := joinPath(path, indexLabel(i))
@@ -143,8 +159,14 @@ func walk(node any, path string, acc *envAccumulator) {
 				if s, ok := child.(string); ok {
 					name, val, hasEq := strings.Cut(s, "=")
 					name = strings.TrimSpace(name)
-					acc.note(name, joinPath(path, name), false, "")
-					if hasEq {
+					if !hasEq {
+						// Bare KEY → inherit from host. Caller
+						// needs to provide it.
+						acc.note(name, joinPath(path, name), false, "")
+					} else {
+						// KEY=value form: scan the value for ${...}
+						// interpolations; literal values don't add
+						// the key (same reasoning as the map form).
 						scanInterpolations(val, joinPath(path, name), acc)
 					}
 					continue

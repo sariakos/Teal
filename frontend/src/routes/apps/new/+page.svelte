@@ -230,6 +230,83 @@
 	{:else}
 		<Card>
 			<form onsubmit={handleSubmit} class="space-y-5">
+				<!-- SOURCE first. Picking a repo here can mutate name/slug
+				     below; nothing visually jumps "above" the input the
+				     user just touched. -->
+				<div class="flex gap-2 border-b border-zinc-200">
+					<button
+						type="button"
+						class="border-b-2 px-3 pb-2 text-sm {mode === 'git'
+							? 'border-teal-600 font-medium text-teal-700'
+							: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
+						onclick={() => (mode = 'git')}
+					>
+						Connect git repo
+					</button>
+					<button
+						type="button"
+						class="border-b-2 px-3 pb-2 text-sm {mode === 'compose'
+							? 'border-teal-600 font-medium text-teal-700'
+							: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
+						onclick={() => (mode = 'compose')}
+					>
+						Paste compose
+					</button>
+				</div>
+
+				{#if mode === 'git'}
+					{#if ghaRepos && ghaRepos.configured && ghaRepos.installations.some((i) => i.repos.length > 0)}
+						<div class="rounded-md border border-teal-200 bg-teal-50 p-3">
+							<label for="repoPick" class="mb-1 block text-sm font-medium text-teal-900">
+								Pick a connected repo (recommended)
+							</label>
+							<select
+								id="repoPick"
+								value={selectedRepoKey}
+								onchange={(e) => pickRepo((e.currentTarget as HTMLSelectElement).value)}
+								class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
+							>
+								<option value="">— or fill in manually below —</option>
+								{#each ghaRepos.installations as inst (inst.installationId)}
+									{#if inst.repos.length > 0}
+										<optgroup label={inst.accountLogin}>
+											{#each inst.repos as r (r.fullName)}
+												<option value={`${inst.installationId}::${r.fullName}::${r.defaultBranch}`}>
+													{r.fullName}{r.private ? ' 🔒' : ''}
+												</option>
+											{/each}
+										</optgroup>
+									{/if}
+								{/each}
+							</select>
+							<p class="mt-1 text-xs text-teal-800">
+								Picking a repo prefills name, slug, branch, git URL and links the GitHub
+								App installation in one save.
+							</p>
+						</div>
+					{:else if ghaRepos && !ghaRepos.configured && !ghaReposLoading}
+						<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+							The platform GitHub App isn't configured yet — set it up at
+							<a class="underline" href="/settings/github-app">Settings → GitHub App</a>
+							to get a one-click repo picker here. You can still fill in the form manually.
+						</div>
+					{:else if ghaRepos && ghaRepos.configured && ghaRepos.installations.length === 0}
+						<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+							The platform GitHub App is configured but isn't installed on any repo yet.
+							{#if ghaRepos.appSlug}
+								<a
+									class="underline"
+									target="_blank"
+									rel="noopener"
+									href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
+								>
+									Install on GitHub →
+								</a>
+							{/if}
+						</div>
+					{/if}
+				{/if}
+
 				<div class="grid grid-cols-2 gap-4">
 					<div>
 						<label for="name" class="mb-1 block text-sm font-medium text-zinc-700">Name</label>
@@ -257,80 +334,8 @@
 					<Input id="domains" bind:value={domains} placeholder="myapp.srv.example.com" />
 				</div>
 
-				<!-- Mode toggle -->
-				<div class="flex gap-2 border-b border-zinc-200">
-					<button
-						type="button"
-						class="border-b-2 px-3 pb-2 text-sm {mode === 'git'
-							? 'border-teal-600 font-medium text-teal-700'
-							: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-						onclick={() => (mode = 'git')}
-					>
-						Connect git repo
-					</button>
-					<button
-						type="button"
-						class="border-b-2 px-3 pb-2 text-sm {mode === 'compose'
-							? 'border-teal-600 font-medium text-teal-700'
-							: 'border-transparent text-zinc-500 hover:text-zinc-800'}"
-						onclick={() => (mode = 'compose')}
-					>
-						Paste compose
-					</button>
-				</div>
-
 				{#if mode === 'git'}
 					<div class="space-y-4">
-						{#if ghaRepos && ghaRepos.configured && ghaRepos.installations.some((i) => i.repos.length > 0)}
-							<div class="rounded-md border border-teal-200 bg-teal-50 p-3">
-								<label for="repoPick" class="mb-1 block text-sm font-medium text-teal-900">
-									Pick a connected repo (recommended)
-								</label>
-								<select
-									id="repoPick"
-									value={selectedRepoKey}
-									onchange={(e) => pickRepo((e.currentTarget as HTMLSelectElement).value)}
-									class="block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
-								>
-									<option value="">— or fill in manually below —</option>
-									{#each ghaRepos.installations as inst (inst.installationId)}
-										{#if inst.repos.length > 0}
-											<optgroup label={inst.accountLogin}>
-												{#each inst.repos as r (r.fullName)}
-													<option value={`${inst.installationId}::${r.fullName}::${r.defaultBranch}`}>
-														{r.fullName}{r.private ? ' 🔒' : ''}
-													</option>
-												{/each}
-											</optgroup>
-										{/if}
-									{/each}
-								</select>
-								<p class="mt-1 text-xs text-teal-800">
-									Picking a repo prefills name, slug, branch, git URL and links the GitHub
-									App installation in one save.
-								</p>
-							</div>
-						{:else if ghaRepos && !ghaRepos.configured && !ghaReposLoading}
-							<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-								The platform GitHub App isn't configured yet — set it up at
-								<a class="underline" href="/settings/github-app">Settings → GitHub App</a>
-								to get a one-click repo picker here. You can still fill in the form manually.
-							</div>
-						{:else if ghaRepos && ghaRepos.configured && ghaRepos.installations.length === 0}
-							<div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-								The platform GitHub App is configured but isn't installed on any repo yet.
-								{#if ghaRepos.appSlug}
-									<a
-										class="underline"
-										target="_blank"
-										rel="noopener"
-										href={`https://github.com/apps/${ghaRepos.appSlug}/installations/new`}
-									>
-										Install on GitHub →
-									</a>
-								{/if}
-							</div>
-						{/if}
 						<div>
 							<label for="giturl" class="mb-1 block text-sm font-medium text-zinc-700">
 								Git URL

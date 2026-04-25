@@ -66,10 +66,17 @@ button {
 	cursor: pointer;
 }
 
-a {
-	color: var(--color-accent);
-	text-decoration: none;
-}
-a:hover {
-	text-decoration: underline;
+/* Wrapped in @layer base so utility classes (text-white, text-zinc-500,
+   etc.) win over this default. Without the layer Tailwind v4 puts
+   unlayered rules ABOVE its utility layer, making any <a> with a
+   Tailwind text-color class still render teal — and a button-styled
+   anchor (text-white on bg-teal-600) ends up teal-on-teal. */
+@layer base {
+	a {
+		color: var(--color-accent);
+		text-decoration: none;
+	}
+	a:hover {
+		text-decoration: underline;
+	}
 }

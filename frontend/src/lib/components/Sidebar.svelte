@@ -57,22 +57,7 @@
 		href="/"
 		class="flex items-center gap-2 px-5 py-4 text-base font-semibold text-[var(--color-fg)] no-underline hover:no-underline"
 	>
-		<span
-			class="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[var(--shadow-xs)]"
-		>
-			<svg
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				class="h-4 w-4"
-				aria-hidden="true"
-			>
-				<path d="M4 6h16M9 12h11M4 18h16" />
-			</svg>
-		</span>
+		<img src="/favicon.svg" alt="" class="h-7 w-7" />
 		Teal
 	</a>
 	<nav class="flex-1 space-y-5 overflow-y-auto px-3 pb-6">

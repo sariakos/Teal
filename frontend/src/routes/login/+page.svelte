@@ -30,24 +30,9 @@
 <div
 	class="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 shadow-[var(--shadow-popover)]"
 >
-	<div class="mb-6 flex items-center gap-2">
-		<span
-			class="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--color-accent)] text-[var(--color-accent-fg)] shadow-[var(--shadow-xs)]"
-		>
-			<svg
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				class="h-4 w-4"
-				aria-hidden="true"
-			>
-				<path d="M4 6h16M9 12h11M4 18h16" />
-			</svg>
-		</span>
-		<h1 class="text-lg font-semibold text-[var(--color-fg)]">Sign in to Teal</h1>
+	<div class="mb-6">
+		<img src="/teal-logo.svg" alt="Teal" class="h-10" />
+		<h1 class="mt-3 text-sm font-medium text-[var(--color-fg-muted)]">Sign in</h1>
 	</div>
 	<form onsubmit={handleSubmit} class="space-y-4">
 		<div>

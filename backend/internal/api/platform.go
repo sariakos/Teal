@@ -97,15 +97,30 @@ func (h *platformHandler) summary(w http.ResponseWriter, r *http.Request) {
 		resp.GitHubAppConfigured = true
 	}
 
-	// Recent failures: scan the last 50 deployments for any failed.
+	// Recent failures: scan the last 50 deployments newest-first.
+	// Suppress a failure if the same app has a later succeeded deploy —
+	// "the bug got fixed" should clear the dashboard nag without
+	// requiring the user to dismiss anything.
 	recent, err := h.store.Deployments.List(r.Context(), 50)
 	if err == nil {
 		appByID := map[int64]domain.App{}
 		for _, a := range apps {
 			appByID[a.ID] = a
 		}
+		// Walking newest-first: the first time we see a succeeded
+		// deploy for an app, every older failure for that app is
+		// already-resolved. canceled doesn't count — the user
+		// canceled and may still need to fix the underlying issue.
+		resolvedApps := map[int64]bool{}
 		for _, d := range recent {
+			if d.Status == domain.DeploymentStatusSucceeded {
+				resolvedApps[d.AppID] = true
+				continue
+			}
 			if d.Status != domain.DeploymentStatusFailed {
+				continue
+			}
+			if resolvedApps[d.AppID] {
 				continue
 			}
 			ts := time.Time{}

@@ -191,33 +191,6 @@
 			{/each}
 		</div>
 
-		{#if summary.recentFailures.length > 0}
-			<Card title="Recent deploy failures">
-				<ul class="divide-y divide-[var(--color-border)] text-sm">
-					{#each summary.recentFailures as f}
-						<li class="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
-							<div class="min-w-0">
-								<a
-									class="font-medium text-[var(--color-fg)] no-underline hover:text-[var(--color-accent)]"
-									href={`/apps/${f.appSlug}`}
-								>
-									{f.appSlug}
-								</a>
-								<span class="ml-1.5 font-mono text-xs text-[var(--color-fg-subtle)]">
-									#{f.deploymentId}
-								</span>
-								<div class="mt-0.5 truncate text-xs text-[var(--color-danger)]">
-									{f.failureReason || '(no reason recorded)'}
-								</div>
-							</div>
-							<div class="shrink-0 text-xs text-[var(--color-fg-subtle)]">
-								{f.completedAt ? new Date(f.completedAt).toLocaleString() : '—'}
-							</div>
-						</li>
-					{/each}
-				</ul>
-			</Card>
-		{/if}
 	{/if}
 
 	{#if loading}
@@ -318,6 +291,34 @@
 					{/each}
 				</tbody>
 			</table>
+		</Card>
+	{/if}
+
+	{#if summary && summary.recentFailures.length > 0}
+		<Card title="Recent deploy failures">
+			<ul class="divide-y divide-[var(--color-border)] text-sm">
+				{#each summary.recentFailures as f}
+					<li class="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+						<div class="min-w-0">
+							<a
+								class="font-medium text-[var(--color-fg)] no-underline hover:text-[var(--color-accent)]"
+								href={`/apps/${f.appSlug}`}
+							>
+								{f.appSlug}
+							</a>
+							<span class="ml-1.5 font-mono text-xs text-[var(--color-fg-subtle)]">
+								#{f.deploymentId}
+							</span>
+							<div class="mt-0.5 truncate text-xs text-[var(--color-danger)]">
+								{f.failureReason || '(no reason recorded)'}
+							</div>
+						</div>
+						<div class="shrink-0 text-xs text-[var(--color-fg-subtle)]">
+							{f.completedAt ? new Date(f.completedAt).toLocaleString() : '—'}
+						</div>
+					</li>
+				{/each}
+			</ul>
 		</Card>
 	{/if}
 </div>

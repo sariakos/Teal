@@ -5,6 +5,7 @@ export interface ContainerSummary {
 	name: string;
 	image: string;
 	color: string;
+	service: string;
 }
 
 export interface LogLine {

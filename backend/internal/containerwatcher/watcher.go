@@ -37,6 +37,13 @@ type Container struct {
 	AppSlug string
 	Color   domain.Color
 
+	// Service is the docker-compose service name this container was
+	// created from (read from the `com.docker.compose.service` label).
+	// Used by the UI to label log lines in the unified all-containers
+	// view. Empty if the label is missing — the watcher still tracks
+	// the container; downstream code falls back to Name.
+	Service string
+
 	// LabelProject is the raw Compose project label we matched on. Kept
 	// for diagnostics — log lines like "saw new container in project X".
 	LabelProject string
@@ -131,6 +138,7 @@ func (w *Watcher) tick(ctx context.Context) {
 			Image:        c.Image,
 			AppSlug:      slug,
 			Color:        color,
+			Service:      c.Labels["com.docker.compose.service"],
 			LabelProject: project,
 		}
 	}

@@ -33,12 +33,13 @@ type logsHandler struct {
 }
 
 // containerSummary is the wire shape returned by GET /apps/{slug}/containers.
-// Used by the Logs tab to populate the container selector.
+// Used by the Logs tab to label lines in the unified per-app stream.
 type containerSummary struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Image string `json:"image"`
-	Color string `json:"color"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Image   string `json:"image"`
+	Color   string `json:"color"`
+	Service string `json:"service"`
 }
 
 // listContainers returns the current platform containers belonging to an
@@ -63,7 +64,11 @@ func (h *logsHandler) listContainers(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		out = append(out, containerSummary{
-			ID: c.ID, Name: c.Name, Image: c.Image, Color: string(c.Color),
+			ID:      c.ID,
+			Name:    c.Name,
+			Image:   c.Image,
+			Color:   string(c.Color),
+			Service: c.Service,
 		})
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -105,6 +105,27 @@
 	let pollHandle: ReturnType<typeof setInterval> | null = null;
 	let watchStartedAt = 0;
 
+	// User-dismissed inline log card. Reset whenever a new deploy starts
+	// so finished deploys stay visible until acknowledged but a fresh
+	// deploy unhides itself.
+	let inlineLogDismissed = $state(false);
+
+	// Most-recent deployment to render inline on Overview. Live one wins;
+	// otherwise the newest finished deployment.
+	const mostRecentDeployment = $derived<Deployment | null>(
+		deployments.length > 0 ? deployments[0] : null
+	);
+	const inlineDep = $derived<Deployment | null>(
+		watchedID !== null
+			? (deployments.find((d) => d.id === watchedID) ?? mostRecentDeployment)
+			: !inlineLogDismissed
+				? mostRecentDeployment
+				: null
+	);
+	const inlineDepIsLive = $derived(
+		!!inlineDep && (inlineDep.status === 'pending' || inlineDep.status === 'running')
+	);
+
 	// Wall-clock cap on how long we keep polling. The backend should mark
 	// every deployment terminal eventually, but bugs and crashes can leave
 	// it hanging in 'running' — without this guard the UI gets stuck on
@@ -134,6 +155,9 @@
 		watchedPhase = 'pending';
 		watchedStatus = 'pending';
 		watchStartedAt = Date.now();
+		// A new deploy un-dismisses the inline log card so the user sees
+		// it without having to scroll or click back into the page.
+		inlineLogDismissed = false;
 		pollHandle = setInterval(async () => {
 			if (Date.now() - watchStartedAt > WATCH_TIMEOUT_MS) {
 				stopWatching();
@@ -681,43 +705,61 @@
 					</dl>
 				</Card>
 
-				{#if watchedID !== null}
-					<Card title="Live deploy">
+				{#if inlineDep}
+					{@const liveStatus = inlineDepIsLive ? watchedStatus || inlineDep.status : inlineDep.status}
+					{@const livePhase = inlineDepIsLive ? watchedPhase || inlineDep.phase || '' : inlineDep.phase || ''}
+					<Card title={inlineDepIsLive ? 'Live deploy' : 'Last deploy'}>
 						{#snippet actions()}
-							<button
-								type="button"
-								onclick={cancelWatching}
-								class="inline-flex items-center gap-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
-							>
-								<X class="h-3.5 w-3.5" />
-								Stop watching
-							</button>
+							{#if inlineDepIsLive}
+								<button
+									type="button"
+									onclick={cancelWatching}
+									class="inline-flex items-center gap-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+								>
+									<X class="h-3.5 w-3.5" />
+									Stop watching
+								</button>
+							{:else}
+								<button
+									type="button"
+									onclick={() => (inlineLogDismissed = true)}
+									class="inline-flex items-center gap-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+								>
+									<X class="h-3.5 w-3.5" />
+									Dismiss
+								</button>
+							{/if}
 						{/snippet}
 						<dl class="space-y-2 text-sm">
 							<div class="flex justify-between">
 								<dt class="text-[var(--color-fg-muted)]">Deployment</dt>
-								<dd class="font-mono">#{watchedID}</dd>
+								<dd class="font-mono">#{inlineDep.id}</dd>
 							</div>
 							<div class="flex items-center justify-between">
 								<dt class="text-[var(--color-fg-muted)]">Status</dt>
 								<dd>
-									<Badge tone={depStatusTone[watchedStatus] ?? 'neutral'} size="sm">
+									<Badge tone={depStatusTone[liveStatus] ?? 'neutral'} size="sm">
 										<StatusDot
-											tone={depStatusTone[watchedStatus] ?? 'neutral'}
-											pulse={watchedStatus === 'pending' || watchedStatus === 'running'}
+											tone={depStatusTone[liveStatus] ?? 'neutral'}
+											pulse={liveStatus === 'pending' || liveStatus === 'running'}
 										/>
-										{watchedStatus}
+										{liveStatus}
 									</Badge>
 								</dd>
 							</div>
 							<div class="flex justify-between">
 								<dt class="text-[var(--color-fg-muted)]">Phase</dt>
-								<dd class="font-mono text-xs">{watchedPhase || '—'}</dd>
+								<dd class="font-mono text-xs">{livePhase || '—'}</dd>
 							</div>
 						</dl>
 						<div class="mt-3">
-							{#key watchedID}
-								<LogStream topic={`deploy.${watchedID}`} height="14rem" showStream={false} />
+							{#key inlineDep.id}
+								<LogStream
+									topic={inlineDepIsLive ? `deploy.${inlineDep.id}` : undefined}
+									backfillUrl={`/api/v1/apps/${slug}/deployments/${inlineDep.id}/log`}
+									height="14rem"
+									showStream={false}
+								/>
 							{/key}
 						</div>
 					</Card>
